@@ -1,0 +1,12 @@
+# Default: let git decide based on content
+* text=auto
+
+# Force LF on files that must run on Linux inside the container
+*.sh           text eol=lf
+*.conf         text eol=lf
+Dockerfile     text eol=lf
+.env.example   text eol=lf
+
+# Keep shell scripts executable in the repo
+scripts/*.sh   text eol=lf
+install.sh     text eol=lf

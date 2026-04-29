@@ -1,0 +1,28 @@
+# Default mode: standalone HTTPS on port 8082.
+# To put behind a reverse proxy, set BIND_ADDR=127.0.0.1 in .env so the
+# container is only reachable from the host.
+services:
+  fileserver:
+    build: .
+    container_name: fileserver
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:${HTTPS_PORT:-8082}:8082"
+      - "${SFTP_BIND:-0.0.0.0}:${SFTP_PORT:-2222}:2222"
+    volumes:
+      - ./data/files:/data/files
+      - ./data/db:/data/db
+      - ./certs:/data/certs
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - SFTP_USERNAME=${SFTP_USERNAME}
+      - SFTP_PASSWORD=${SFTP_PASSWORD}
+      - PUBLIC_URL=${PUBLIC_URL}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1:8082/api/auth/me >/dev/null 2>&1 || [ $? = 8 ] || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
