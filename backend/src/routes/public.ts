@@ -18,7 +18,18 @@ const shareLimiter = rateLimit({
 
 router.use(shareLimiter);
 
-const HASH_RE = /^([A-Za-z0-9_-]{22})(?:(\.[A-Za-z0-9]+)|\/(.*))?$/;
+// Express 4's `'/*'` route puts the captured tail in req.params[0]; behavior
+// can vary subtly with mount points and path-to-regexp versions, so we read
+// `req.path` directly — it is always the path within the router mount, with a
+// leading slash and no query string.
+//
+// Recognised forms:
+//   /HASH            file share (extension optional, just for player friendliness)
+//   /HASH.mp3        file share with extension
+//   /HASH/           folder share root
+//   /HASH/sub/file   resource inside a folder share
+const FILE_FORM_RE   = /^\/([A-Za-z0-9_-]{22})(?:\.[A-Za-z0-9]+)?$/;
+const FOLDER_FORM_RE = /^\/([A-Za-z0-9_-]{22})\/(.*)$/;
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({
@@ -40,7 +51,25 @@ function safeJoin(rootAbs: string, sub: string): string | null {
   return joined;
 }
 
-function renderFolderIndex(share: Share, subPath: string, absDir: string, req: Request, res: Response) {
+function streamFileShare(share: Share, req: Request, res: Response): void {
+  const absPath = path.join(config.filesRoot, share.file_path);
+  try {
+    fs.accessSync(absPath, fs.constants.R_OK);
+  } catch {
+    res.status(404).end();
+    return;
+  }
+  setImmediate(() => incrementDownload(share.id));
+  streamFile(req, res, absPath);
+}
+
+function renderFolderIndex(
+  share: Share,
+  subPath: string,
+  absDir: string,
+  req: Request,
+  res: Response
+): void {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(absDir, { withFileTypes: true });
@@ -68,27 +97,26 @@ function renderFolderIndex(share: Share, subPath: string, absDir: string, req: R
 
   const rows: string[] = [];
 
-  // parent link
   if (subPath) {
     const parts = subPath.split('/').filter(Boolean);
     parts.pop();
-    const up = parts.length === 0 ? `/${share.hash}/` : `/${share.hash}/${parts.map(encodeURIComponent).join('/')}/`;
+    const up = parts.length === 0
+      ? `/${share.hash}/`
+      : `/${share.hash}/${parts.map(encodeURIComponent).join('/')}/`;
     rows.push(`<tr><td><a href="${escapeHtml(up)}">📁 ../</a></td><td></td><td></td></tr>`);
   }
 
   for (const d of dirs) {
     const href = encodeURIComponent(d.name) + '/';
-    rows.push(`<tr><td><a href="${escapeHtml(href)}">📁 ${escapeHtml(d.name)}/</a></td><td></td><td></td></tr>`);
+    rows.push(
+      `<tr><td><a href="${escapeHtml(href)}">📁 ${escapeHtml(d.name)}/</a></td><td></td><td></td></tr>`
+    );
   }
 
   for (const f of files) {
     const abs = path.join(absDir, f.name);
     let size = 0, mtime = 0;
-    try {
-      const st = fs.statSync(abs);
-      size = st.size;
-      mtime = st.mtimeMs;
-    } catch {}
+    try { const st = fs.statSync(abs); size = st.size; mtime = st.mtimeMs; } catch { /* */ }
     const href = encodeURIComponent(f.name);
     const date = mtime ? new Date(mtime).toISOString().slice(0, 16).replace('T', ' ') : '';
     rows.push(
@@ -115,7 +143,7 @@ function renderFolderIndex(share: Share, subPath: string, absDir: string, req: R
 <style>
 :root { color-scheme: light dark; }
 * { box-sizing: border-box; }
-body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 1.5rem; max-width: 1000px; margin: 0 auto; background: #fafafa; color: #222; }
+body { font-family: system-ui, -apple-system, sans-serif; margin: 0 auto; padding: 1.5rem; max-width: 1000px; background: #fafafa; color: #222; }
 @media (prefers-color-scheme: dark) {
   body { background: #1a1a1a; color: #ddd; }
   table tr { border-bottom-color: #333; }
@@ -157,96 +185,88 @@ footer { margin-top: 2rem; font-size: 0.8rem; color: #999; text-align: center; }
 }
 
 function handleShare(req: Request, res: Response): void {
-  const raw = (req.params as { 0: string })[0] || '';
-  const m = raw.match(HASH_RE);
-  if (!m) {
+  // Match against the path inside the mount point (e.g. /HASH.mp3 when
+  // mounted at /s and requested via /s/HASH.mp3).
+  const p = req.path;
+
+  // ---- File-form URL: /HASH or /HASH.ext  --------------------------------
+  let m = p.match(FILE_FORM_RE);
+  if (m) {
+    const share = getShareByHash(m[1]!);
+    if (!share) { res.status(404).end(); return; }
+
+    if (share.share_type === 'file') {
+      streamFileShare(share, req, res);
+      return;
+    }
+
+    // /HASH for a folder share — redirect to /HASH/ for proper relative links.
+    if (share.share_type === 'folder') {
+      // If request was /HASH.mp3 (folder share with extension), reject — folders
+      // don't have meaningful extensions and players asking for a file shouldn't
+      // accidentally land on an HTML index.
+      if (p.includes('.')) { res.status(404).end(); return; }
+      res.redirect(301, `/${share.hash}/`);
+      return;
+    }
+
     res.status(404).end();
     return;
   }
 
-  const hash = m[1]!;
-  const ext = m[2];      // ".mp3" etc., or undefined
-  const subRaw = m[3];   // path after slash, or undefined
-
-  const share = getShareByHash(hash);
-  if (!share) {
-    res.status(404).end();
-    return;
-  }
-
-  // FILE share
-  if (share.share_type === 'file') {
-    if (subRaw !== undefined) {
-      // file shares don't have sub-paths
+  // ---- Folder-form URL: /HASH/ or /HASH/sub/path  ------------------------
+  m = p.match(FOLDER_FORM_RE);
+  if (m) {
+    const share = getShareByHash(m[1]!);
+    if (!share || share.share_type !== 'folder') {
       res.status(404).end();
       return;
     }
-    const absPath = path.join(config.filesRoot, share.file_path);
+
+    const folderRoot = path.resolve(config.filesRoot, share.file_path);
     try {
-      fs.accessSync(absPath, fs.constants.R_OK);
+      if (!fs.statSync(folderRoot).isDirectory()) {
+        res.status(404).end();
+        return;
+      }
     } catch {
       res.status(404).end();
       return;
     }
-    setImmediate(() => incrementDownload(share.id));
-    streamFile(req, res, absPath);
-    return;
-  }
 
-  // FOLDER share
-  if (ext) {
-    // /HASH.ext for a folder share is invalid
-    res.status(404).end();
-    return;
-  }
+    const subRaw = m[2]!;          // may be empty for "/HASH/"
+    const target = safeJoin(folderRoot, subRaw);
+    if (!target) {
+      res.status(400).end();
+      return;
+    }
 
-  const folderRoot = path.resolve(config.filesRoot, share.file_path);
-  // Verify the folder still exists
-  try {
-    if (!fs.statSync(folderRoot).isDirectory()) {
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(target);
+    } catch {
       res.status(404).end();
       return;
     }
-  } catch {
-    res.status(404).end();
-    return;
-  }
 
-  // /HASH (no slash) — redirect to /HASH/ for relative link consistency
-  if (subRaw === undefined) {
-    res.redirect(301, `/${hash}/`);
-    return;
-  }
-
-  // /HASH/<sub>
-  const target = safeJoin(folderRoot, subRaw);
-  if (!target) {
-    res.status(400).end();
-    return;
-  }
-
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(target);
-  } catch {
-    res.status(404).end();
-    return;
-  }
-
-  if (stat.isDirectory()) {
-    // Directory listings need trailing slash for relative links
-    if (!req.path.endsWith('/')) {
-      res.redirect(301, req.path + '/');
+    if (stat.isDirectory()) {
+      // Directory listings need trailing slash so relative links resolve.
+      if (!req.path.endsWith('/')) {
+        res.redirect(301, req.path + '/');
+        return;
+      }
+      const subClean = decodeURIComponent(subRaw).replace(/\/+$/, '');
+      renderFolderIndex(share, subClean, target, req, res);
       return;
     }
-    const subClean = decodeURIComponent(subRaw).replace(/\/+$/, '');
-    renderFolderIndex(share, subClean, target, req, res);
+
+    // file inside a folder share — stream it
+    setImmediate(() => incrementDownload(share.id));
+    streamFile(req, res, target);
     return;
   }
 
-  // file inside folder share — stream
-  setImmediate(() => incrementDownload(share.id));
-  streamFile(req, res, target);
+  res.status(404).end();
 }
 
 router.get('/*', handleShare);
