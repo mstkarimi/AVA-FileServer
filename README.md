@@ -176,6 +176,25 @@ Renewal: replace the files and `docker compose restart`.
 If `./certs/` is empty when the container starts, the entrypoint generates a
 self-signed cert (RSA 4096, CN=localhost, 10 years). Browsers will warn.
 
+---
+
+## Branding
+
+The web UI shows a logo on the login page, in the header, and as the browser
+tab favicon. To use your own logo, drop two PNG files into `./data/branding/`:
+
+| File | Purpose | Recommended size |
+|---|---|---|
+| `logo.png` | Logo on the login card and header | 256 × 256 (square) |
+| `favicon.png` | Browser tab icon | 64 × 64 (square) |
+
+No rebuild required &mdash; the files are served live from the bind-mounted
+volume. Just refresh the browser. If the files are missing, a stylised "AVA"
+placeholder is shown.
+
+The displayed brand name and subtitle (`A.V.A SERVER FILES` /
+`SafirGofteman`) live in `frontend/src/components/Brand.tsx`.
+
 ### Behind an existing reverse proxy
 
 If you already terminate TLS on the host (nginx, Caddy, Traefik):

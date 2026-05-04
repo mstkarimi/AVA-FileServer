@@ -9,7 +9,7 @@ fi
 echo "${SFTP_USERNAME}:${SFTP_PASSWORD}" | chpasswd
 
 # --- Filesystem layout -------------------------------------------------------
-mkdir -p /data/files /data/db /data/files/.tmp /data/certs
+mkdir -p /data/files /data/db /data/files/.tmp /data/certs /data/branding
 
 # chroot requires root-owned, NOT group/world writable
 chown root:root /data/files

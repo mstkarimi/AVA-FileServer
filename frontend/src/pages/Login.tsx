@@ -1,7 +1,9 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HardDrive, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import api from '../api/client';
+import Brand from '../components/Brand';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -30,43 +32,46 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-slate-800 rounded-2xl shadow-2xl p-8">
-        <div className="flex flex-col items-center mb-8">
-          <div className="bg-blue-600 p-3 rounded-xl mb-3">
-            <HardDrive size={28} className="text-white" />
-          </div>
-          <h1 className="text-xl font-bold text-white">File Server</h1>
-          <p className="text-slate-400 text-sm mt-1">Admin Panel</p>
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden
+                    bg-slate-50 dark:bg-slate-900
+                    before:content-[''] before:absolute before:inset-0 before:opacity-30 dark:before:opacity-20
+                    before:bg-[radial-gradient(circle_at_20%_20%,#facc15_0%,transparent_40%),radial-gradient(circle_at_80%_80%,#1e3a8a_0%,transparent_40%)]">
+      <div className="absolute top-4 right-4 z-10">
+        <ThemeToggle />
+      </div>
+
+      <div className="relative w-full max-w-sm bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 ring-1 ring-slate-200 dark:ring-slate-700">
+        <div className="mb-8">
+          <Brand variant="stack" size={68} />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Username</label>
+            <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">Username</label>
             <input
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="admin"
               required
               autoFocus
             />
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Password</label>
+            <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">Password</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="••••••••"
               required
             />
           </div>
 
           {error && (
-            <div className="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-sm">
+            <div className="bg-red-50 dark:bg-red-900/40 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 rounded-lg px-3 py-2 text-sm">
               {error}
             </div>
           )}
@@ -80,6 +85,10 @@ export default function Login() {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
+          © {new Date().getFullYear()} SafirGofteman
+        </p>
       </div>
     </div>
   );

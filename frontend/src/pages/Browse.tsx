@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LogOut, RefreshCw, HardDrive, Folder, Eye, Download, Link2, PanelLeft,
+  LogOut, RefreshCw, Folder, Eye, Download, Link2, PanelLeft,
 } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
 import PreviewModal from '../components/PreviewModal';
 import SearchBar from '../components/SearchBar';
+import Brand from '../components/Brand';
+import ThemeToggle from '../components/ThemeToggle';
 import { ToastContainer, toast } from '../components/Toast';
 
 function formatSize(bytes: number): string {
@@ -105,38 +107,37 @@ export default function Browse() {
   const breadcrumbs = currentPath.split('/').filter(Boolean);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900 overflow-hidden">
+    <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
       {/* Top bar */}
-      <header className="flex items-center gap-4 px-4 py-3 bg-slate-800 border-b border-slate-700 shrink-0">
-        <button onClick={() => setSidebarOpen(o => !o)} className="text-slate-400 hover:text-white p-1 rounded">
+      <header className="flex items-center gap-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0">
+        <button onClick={() => setSidebarOpen(o => !o)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded">
           <PanelLeft size={20} />
         </button>
-        <div className="flex items-center gap-2 shrink-0">
-          <HardDrive size={20} className="text-blue-400" />
-          <span className="text-white font-medium">Files</span>
-        </div>
+
+        <Brand variant="row" size={32} />
 
         <SearchBar onSelect={onSearchSelect} />
 
         <div className="flex-1" />
 
-        <button onClick={() => load(currentPath)} className="text-slate-400 hover:text-white p-1.5 rounded hover:bg-slate-700">
+        <ThemeToggle />
+        <button onClick={() => load(currentPath)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
           <RefreshCw size={16} />
         </button>
-        <button onClick={logout} className="text-slate-400 hover:text-red-400 p-1.5 rounded hover:bg-slate-700" title="Logout">
+        <button onClick={logout} className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Logout">
           <LogOut size={16} />
         </button>
       </header>
 
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-1 px-4 py-2 bg-slate-800/60 border-b border-slate-700 text-sm shrink-0">
-        <button onClick={() => navigateTo('/')} className="text-slate-400 hover:text-white">/ root</button>
+      <div className="flex items-center gap-1 px-4 py-2 bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-sm shrink-0">
+        <button onClick={() => navigateTo('/')} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white">/ root</button>
         {breadcrumbs.map((seg, i) => {
           const path = '/' + breadcrumbs.slice(0, i + 1).join('/');
           return (
             <span key={path} className="flex items-center gap-1">
-              <span className="text-slate-600">/</span>
-              <button onClick={() => navigateTo(path)} className="text-slate-400 hover:text-white truncate max-w-[200px]" dir="auto">
+              <span className="text-slate-400 dark:text-slate-600">/</span>
+              <button onClick={() => navigateTo(path)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white truncate max-w-[200px]" dir="auto">
                 {seg}
               </button>
             </span>
@@ -147,8 +148,8 @@ export default function Browse() {
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && (
-          <aside className="w-60 shrink-0 bg-slate-800 border-r border-slate-700 overflow-hidden flex flex-col">
-            <div className="px-3 py-2 text-xs uppercase tracking-wide text-slate-500 font-medium border-b border-slate-700">
+          <aside className="w-60 shrink-0 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
+            <div className="px-3 py-2 text-xs uppercase tracking-wide text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
               Folders
             </div>
             <FileTree currentPath={currentPath} onNavigate={navigateTo} />
@@ -166,7 +167,7 @@ export default function Browse() {
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-slate-700">
+                <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-slate-200 dark:border-slate-700">
                   <th className="text-left px-4 py-2 font-medium">Name</th>
                   <th className="text-right px-4 py-2 font-medium w-32">Size</th>
                   <th className="text-right px-4 py-2 font-medium w-32">Modified</th>
@@ -178,7 +179,7 @@ export default function Browse() {
                   <tr
                     key={e.name}
                     onDoubleClick={() => openEntry(e)}
-                    className="border-b border-slate-800 hover:bg-slate-800/50"
+                    className="border-b border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800/50"
                   >
                     <td className="px-4 py-2.5">
                       <button
@@ -186,13 +187,13 @@ export default function Browse() {
                         className="flex items-center gap-2 text-left w-full"
                       >
                         {e.type === 'dir' ? (
-                          <Folder size={16} className="text-yellow-400 shrink-0" />
+                          <Folder size={16} className="text-yellow-500 dark:text-yellow-400 shrink-0" />
                         ) : (
                           <span className="w-4 h-4 shrink-0" />
                         )}
-                        <span dir="auto" className="text-sm text-slate-200 truncate">{e.name}</span>
+                        <span dir="auto" className="text-sm text-slate-800 dark:text-slate-200 truncate">{e.name}</span>
                         {e.shareUrl && (
-                          <span title="Has a public share link" className="ml-1 shrink-0 text-blue-400">
+                          <span title="Has a public share link" className="ml-1 shrink-0 text-blue-500 dark:text-blue-400">
                             <Link2 size={12} />
                           </span>
                         )}
@@ -207,7 +208,7 @@ export default function Browse() {
                         {e.shareUrl && (
                           <button
                             onClick={() => copyShareLink(e)}
-                            className="text-slate-400 hover:text-blue-400 p-1.5 rounded hover:bg-slate-700"
+                            className="text-slate-500 hover:text-blue-500 dark:text-slate-400 dark:hover:text-blue-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
                             title="Copy share link"
                           >
                             <Link2 size={15} />
@@ -215,10 +216,10 @@ export default function Browse() {
                         )}
                         {e.type === 'file' && (
                           <>
-                            <button onClick={() => preview(e)} className="text-slate-400 hover:text-blue-400 p-1.5 rounded hover:bg-slate-700" title="Preview">
+                            <button onClick={() => preview(e)} className="text-slate-500 hover:text-blue-500 dark:text-slate-400 dark:hover:text-blue-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Preview">
                               <Eye size={15} />
                             </button>
-                            <button onClick={() => download(e)} className="text-slate-400 hover:text-green-400 p-1.5 rounded hover:bg-slate-700" title="Download">
+                            <button onClick={() => download(e)} className="text-slate-500 hover:text-green-600 dark:text-slate-400 dark:hover:text-green-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Download">
                               <Download size={15} />
                             </button>
                           </>

@@ -69,7 +69,7 @@ export default function FileList({
     return (
       <button
         onClick={() => toggleSort(k)}
-        className="flex items-center gap-1 text-slate-400 hover:text-slate-200 text-xs uppercase tracking-wide font-medium"
+        className="flex items-center gap-1 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 text-xs uppercase tracking-wide font-medium"
       >
         {label}
         {sortKey === k ? (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null}
@@ -82,18 +82,18 @@ export default function FileList({
   return (
     <div className="flex flex-col h-full" onClick={() => setMenuOpen(null)}>
       {selected.size > 1 && (
-        <div className="flex items-center gap-3 px-4 py-2 bg-blue-900/30 border-b border-blue-800 text-sm">
-          <span className="text-blue-300">{selected.size} selected</span>
+        <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 dark:bg-blue-900/30 border-b border-blue-200 dark:border-blue-800 text-sm">
+          <span className="text-blue-700 dark:text-blue-300">{selected.size} selected</span>
           <button
             onClick={() => onDelete(selectedEntries)}
-            className="flex items-center gap-1 text-red-400 hover:text-red-300"
+            className="flex items-center gap-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
           >
             <Trash2 size={14} /> Delete all
           </button>
         </div>
       )}
 
-      <div className="grid grid-cols-[auto_1fr_100px_160px_120px] gap-0 border-b border-slate-700 px-4 py-2">
+      <div className="grid grid-cols-[auto_1fr_100px_160px_120px] gap-0 border-b border-slate-200 dark:border-slate-700 px-4 py-2">
         <div className="w-5" />
         <SortHeader label="Name" k="name" />
         <SortHeader label="Size" k="size" />
@@ -110,9 +110,9 @@ export default function FileList({
             key={entry.name}
             onDoubleClick={() => onOpen(entry)}
             onClick={e => onSelect(entry.name, e.ctrlKey || e.metaKey)}
-            className={`grid grid-cols-[auto_1fr_100px_160px_120px] items-center gap-0 px-4 py-2 cursor-pointer border-b border-slate-800
-              hover:bg-slate-700/50 transition-colors
-              ${selected.has(entry.name) ? 'bg-blue-900/30' : ''}
+            className={`grid grid-cols-[auto_1fr_100px_160px_120px] items-center gap-0 px-4 py-2 cursor-pointer border-b border-slate-200 dark:border-slate-800
+              hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors
+              ${selected.has(entry.name) ? 'bg-blue-50 dark:bg-blue-900/30' : ''}
             `}
           >
             <input
@@ -123,12 +123,12 @@ export default function FileList({
             />
             <div className="flex items-center gap-2 min-w-0">
               {fileIcon(entry)}
-              <span dir="auto" className="truncate text-sm text-slate-200">{entry.name}</span>
+              <span dir="auto" className="truncate text-sm text-slate-900 dark:text-slate-200">{entry.name}</span>
               {entry.shareUrl && (
                 <button
                   onClick={e => { e.stopPropagation(); copyToClipboard(entry.shareUrl!); }}
                   title="Copy existing share link"
-                  className="shrink-0 text-blue-400 hover:text-blue-300 p-0.5"
+                  className="shrink-0 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 p-0.5"
                 >
                   <Link2 size={13} />
                 </button>

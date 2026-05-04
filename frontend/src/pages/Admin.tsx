@@ -13,6 +13,8 @@ import ShareManager from '../components/ShareManager';
 import UsersTab from '../components/UsersTab';
 import BulkShareModal from '../components/BulkShareModal';
 import SearchBar from '../components/SearchBar';
+import Brand from '../components/Brand';
+import ThemeToggle from '../components/ThemeToggle';
 import { ToastContainer, toast } from '../components/Toast';
 
 type Modal =
@@ -144,25 +146,29 @@ export default function Admin() {
   const breadcrumbs = currentPath.split('/').filter(Boolean);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900 overflow-hidden">
+    <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
       {/* Top bar */}
-      <header className="flex items-center gap-3 px-4 py-3 bg-slate-800 border-b border-slate-700 shrink-0">
-        <button onClick={() => setSidebarOpen(o => !o)} className="text-slate-400 hover:text-white p-1 rounded">
+      <header className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0">
+        <button onClick={() => setSidebarOpen(o => !o)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded">
           <PanelLeft size={20} />
         </button>
 
-        <div className="flex-1 flex items-center gap-1 text-sm text-slate-400 min-w-0">
-          <button onClick={() => navigate_to('/')} className="hover:text-white shrink-0">/</button>
+        <Brand variant="row" size={32} />
+
+        <div className="hidden lg:flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 min-w-0 ml-2">
+          <button onClick={() => navigate_to('/')} className="hover:text-slate-900 dark:hover:text-white shrink-0">/</button>
           {breadcrumbs.map((seg, i) => {
             const path = '/' + breadcrumbs.slice(0, i + 1).join('/');
             return (
               <span key={path} className="flex items-center gap-1">
                 <span>/</span>
-                <button onClick={() => navigate_to(path)} className="hover:text-white truncate max-w-[120px]">{seg}</button>
+                <button onClick={() => navigate_to(path)} className="hover:text-slate-900 dark:hover:text-white truncate max-w-[120px]">{seg}</button>
               </span>
             );
           })}
         </div>
+
+        <div className="flex-1" />
 
         <div className="hidden md:block w-72">
           <SearchBar
@@ -190,7 +196,7 @@ export default function Admin() {
           )}
           <button
             onClick={() => { setShowInput('mkdir'); setInputValue(''); }}
-            className="flex items-center gap-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg transition-colors"
           >
             <FolderPlus size={15} /> New Folder
           </button>
@@ -200,32 +206,33 @@ export default function Admin() {
           >
             <Upload size={15} /> Upload
           </button>
-          <button onClick={() => load()} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700">
+          <ThemeToggle />
+          <button onClick={() => load()} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
             <RefreshCw size={16} />
           </button>
-          <button onClick={logout} className="text-slate-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-700">
+          <button onClick={logout} className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
             <LogOut size={16} />
           </button>
         </div>
       </header>
 
       {/* Tab bar */}
-      <div className="flex gap-0 px-4 bg-slate-800 border-b border-slate-700 shrink-0">
+      <div className="flex gap-0 px-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0">
         <button
           onClick={() => setTab('files')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === 'files' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === 'files' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
         >
           Files
         </button>
         <button
           onClick={() => setTab('shares')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === 'shares' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === 'shares' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
         >
           <Share2 size={14} /> Manage Shares
         </button>
         <button
           onClick={() => setTab('users')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === 'users' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === 'users' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
         >
           <Users size={14} /> Users
         </button>
@@ -243,8 +250,8 @@ export default function Admin() {
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
           {sidebarOpen && (
-            <aside className="w-56 shrink-0 bg-slate-800 border-r border-slate-700 overflow-hidden flex flex-col">
-              <div className="px-3 py-2 text-xs uppercase tracking-wide text-slate-500 font-medium border-b border-slate-700">
+            <aside className="w-56 shrink-0 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
+              <div className="px-3 py-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
                 Folders
               </div>
               <FileTree currentPath={currentPath} onNavigate={navigate_to} />
@@ -255,8 +262,8 @@ export default function Admin() {
           <main className="flex-1 flex flex-col overflow-hidden">
             {/* Inline input for rename/mkdir/move */}
             {showInput && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-slate-800 border-b border-slate-700">
-                <label className="text-sm text-slate-400 shrink-0">
+              <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                <label className="text-sm text-slate-600 dark:text-slate-400 shrink-0">
                   {showInput === 'rename' && `Rename "${pendingEntry?.name}" to:`}
                   {showInput === 'mkdir' && 'New folder name:'}
                   {showInput === 'move' && `Move "${pendingEntry?.name}" to path:`}
@@ -273,7 +280,7 @@ export default function Admin() {
                     }
                     if (e.key === 'Escape') { setShowInput(null); setInputValue(''); }
                   }}
-                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                  className="flex-1 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
                   placeholder={showInput === 'move' ? '/path/to/destination' : ''}
                 />
                 <button
@@ -286,7 +293,7 @@ export default function Admin() {
                 >
                   OK
                 </button>
-                <button onClick={() => { setShowInput(null); setInputValue(''); }} className="text-sm text-slate-400 hover:text-white px-2">
+                <button onClick={() => { setShowInput(null); setInputValue(''); }} className="text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white px-2">
                   ✕
                 </button>
               </div>

@@ -11,6 +11,7 @@ services:
     volumes:
       - ./data/files:/data/files
       - ./data/db:/data/db
+      - ./data/branding:/data/branding
       - ./certs:/data/certs
     environment:
       - JWT_SECRET=${JWT_SECRET}
