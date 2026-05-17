@@ -11,14 +11,32 @@ echo "${SFTP_USERNAME}:${SFTP_PASSWORD}" | chpasswd
 # --- Filesystem layout -------------------------------------------------------
 mkdir -p /data/files /data/db /data/files/.tmp /data/certs /data/branding
 
-# chroot requires root-owned, NOT group/world writable
-chown root:root /data/files
-chmod 0755 /data/files
+# --- /data/files (chroot top) ---------------------------------------------
+# OpenSSH chroot requires this dir to be root-owned and NOT group/world
+# writable, so we keep it 2755 (group=sftpgroup, NOT group-writable). The
+# setgid bit (the leading 2) is the trick: any child directory created
+# inside automatically inherits group=sftpgroup, so the SFTP user can
+# access children even when they were created by the admin UI (which
+# runs as root).
+chown root:sftpgroup /data/files
+chmod 2755 /data/files
 
-# Uploads subdirectory IS group-writable (sftp lands here)
+# --- /data/files/.tmp (multer temp) ---------------------------------------
+chown root:sftpgroup /data/files/.tmp
+chmod 2775 /data/files/.tmp
+
+# --- /data/files/uploads (default SFTP drop zone) -------------------------
 mkdir -p /data/files/uploads
 chown root:sftpgroup /data/files/uploads
 chmod 2775 /data/files/uploads
+
+# --- Make every existing child group-writable so the SFTP user has full
+# read/write/rename/delete inside any folder.
+# Idempotent — safe to re-run on every container start.
+find /data/files -mindepth 1 -type d ! -path /data/files/.tmp -exec chgrp sftpgroup {} + 2>/dev/null || true
+find /data/files -mindepth 1 -type d ! -path /data/files/.tmp -exec chmod 2775 {} + 2>/dev/null || true
+find /data/files -mindepth 1 -type f -exec chgrp sftpgroup {} + 2>/dev/null || true
+find /data/files -mindepth 1 -type f -exec chmod 0664 {} + 2>/dev/null || true
 
 # --- TLS certificate ---------------------------------------------------------
 CERT="/data/certs/fullchain.pem"
