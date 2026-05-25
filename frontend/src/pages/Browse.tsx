@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LogOut, RefreshCw, Folder, Eye, Download, Link2, PanelLeft,
+  LogOut, RefreshCw, Folder, Eye, Download, Link2, PanelLeft, Upload,
 } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
@@ -9,6 +9,7 @@ import PreviewModal from '../components/PreviewModal';
 import SearchBar from '../components/SearchBar';
 import Brand from '../components/Brand';
 import ThemeToggle from '../components/ThemeToggle';
+import UploadZone from '../components/UploadZone';
 import { ToastContainer, toast } from '../components/Toast';
 
 function formatSize(bytes: number): string {
@@ -24,11 +25,14 @@ function formatDate(ms: number): string {
 
 export default function Browse() {
   const navigate = useNavigate();
+  const role = localStorage.getItem('role') as 'viewer' | 'teacher' | null;
+  const isTeacher = role === 'teacher';
   const [currentPath, setCurrentPath] = useState('/');
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewing, setPreviewing] = useState<{ path: string; name: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
@@ -88,6 +92,20 @@ export default function Browse() {
     }
   }
 
+  async function createAndCopyShare(e: FileEntry) {
+    const p = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`;
+    try {
+      const res = await api.post('/shares', { filePath: p, type: e.type === 'dir' ? 'folder' : 'file' });
+      const url: string = res.data.url;
+      await navigator.clipboard.writeText(url).catch(() => {});
+      toast('Share link created & copied', 'success');
+      load(currentPath); // refresh to show share icon
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create share';
+      toast(msg, 'error');
+    }
+  }
+
   function onSearchSelect(r: SearchResult) {
     if (r.type === 'dir') {
       navigateTo(r.path);
@@ -101,7 +119,7 @@ export default function Browse() {
   function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
-    navigate('/login');
+    navigate('/login', { state: { fromLogout: true } });
   }
 
   const breadcrumbs = currentPath.split('/').filter(Boolean);
@@ -121,6 +139,16 @@ export default function Browse() {
         <div className="flex-1" />
 
         <ThemeToggle />
+        {isTeacher && (
+          <button
+            onClick={() => setUploadOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
+            title="Upload files"
+          >
+            <Upload size={15} />
+            <span>آپلود</span>
+          </button>
+        )}
         <button onClick={() => load(currentPath)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
           <RefreshCw size={16} />
         </button>
@@ -205,7 +233,7 @@ export default function Browse() {
                     <td className="px-4 py-2.5 text-right text-xs text-slate-500">{formatDate(e.modified)}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex justify-end gap-1">
-                        {e.shareUrl && (
+                        {e.shareUrl ? (
                           <button
                             onClick={() => copyShareLink(e)}
                             className="text-slate-500 hover:text-blue-500 dark:text-slate-400 dark:hover:text-blue-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -213,7 +241,15 @@ export default function Browse() {
                           >
                             <Link2 size={15} />
                           </button>
-                        )}
+                        ) : isTeacher ? (
+                          <button
+                            onClick={() => createAndCopyShare(e)}
+                            className="text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
+                            title="Create & copy share link"
+                          >
+                            <Link2 size={15} />
+                          </button>
+                        ) : null}
                         {e.type === 'file' && (
                           <>
                             <button onClick={() => preview(e)} className="text-slate-500 hover:text-blue-500 dark:text-slate-400 dark:hover:text-blue-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Preview">
@@ -239,6 +275,14 @@ export default function Browse() {
           filePath={previewing.path}
           fileName={previewing.name}
           onClose={() => setPreviewing(null)}
+        />
+      )}
+
+      {uploadOpen && (
+        <UploadZone
+          currentPath={currentPath}
+          onDone={() => { setUploadOpen(false); load(currentPath); }}
+          onClose={() => setUploadOpen(false)}
         />
       )}
 

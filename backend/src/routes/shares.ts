@@ -5,9 +5,24 @@ import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { createShare, listShares, deleteShare, shareUrl, ShareType } from '../services/shareService';
 import { safePath } from '../utils/safePath';
 import { config } from '../config';
+import { userCanAccess } from '../services/permissionService';
 
 const router = Router();
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth);
+
+// Helper: teacher can only share files/folders within their permitted scope
+function requireUploadAccess(req: AuthRequest, res: Response, filePath: string): boolean {
+  if (req.role === 'admin') return true;
+  if (req.role === 'teacher') {
+    if (!userCanAccess(req.userId!, req.role, filePath, { mode: 'access' })) {
+      res.status(403).json({ error: 'No permission to share this path', code: 'FORBIDDEN' });
+      return false;
+    }
+    return true;
+  }
+  res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+  return false;
+}
 
 router.post('/', (req: AuthRequest, res: Response): void => {
   const { filePath, type } = req.body as { filePath?: string; type?: ShareType };
@@ -16,6 +31,8 @@ router.post('/', (req: AuthRequest, res: Response): void => {
     res.status(400).json({ error: 'filePath required', code: 'MISSING_FIELDS' });
     return;
   }
+
+  if (!requireUploadAccess(req, res, filePath)) return;
 
   const resolved = safePath(filePath);
   let stat: fs.Stats;
@@ -56,6 +73,11 @@ router.post('/', (req: AuthRequest, res: Response): void => {
  *              if `recurse=false`, creates a folder-share for the folder itself.
  */
 router.post('/bulk', (req: AuthRequest, res: Response): void => {
+  if (req.role !== 'admin' && req.role !== 'teacher') {
+    res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    return;
+  }
+
   const { paths, recurse, folderShare } = req.body as {
     paths?: string[];
     recurse?: boolean;
@@ -104,6 +126,12 @@ router.post('/bulk', (req: AuthRequest, res: Response): void => {
   }
 
   for (const p of paths) {
+    // Teacher permission check per path
+    if (req.role === 'teacher' && !userCanAccess(req.userId!, req.role!, p, { mode: 'access' })) {
+      out.push({ sourcePath: p, error: 'no permission' });
+      continue;
+    }
+
     let abs: string;
     try {
       abs = safePath(p);
@@ -149,7 +177,7 @@ router.post('/bulk', (req: AuthRequest, res: Response): void => {
   res.json(out);
 });
 
-router.get('/', (_req: AuthRequest, res: Response): void => {
+router.get('/', requireAdmin, (_req: AuthRequest, res: Response): void => {
   const shares = listShares().map(s => ({
     id: s.id,
     hash: s.hash,
@@ -163,7 +191,7 @@ router.get('/', (_req: AuthRequest, res: Response): void => {
   res.json(shares);
 });
 
-router.delete('/:id', (req: AuthRequest, res: Response): void => {
+router.delete('/:id', requireAdmin, (req: AuthRequest, res: Response): void => {
   const id = parseInt(req.params['id'], 10);
   if (isNaN(id)) {
     res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });

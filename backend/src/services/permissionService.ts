@@ -1,6 +1,6 @@
 import { getDb } from '../db';
 
-export type Role = 'admin' | 'viewer';
+export type Role = 'admin' | 'viewer' | 'teacher';
 
 function normalize(p: string): string {
   return p.replace(/^\/+|\/+$/g, '');
@@ -25,6 +25,7 @@ export function userCanAccess(
   opts: AccessOptions = {}
 ): boolean {
   if (role === 'admin') return true;
+  // teacher has same scoped-access rules as viewer
 
   const perms = getUserPermissions(userId);
   if (perms.length === 0) return false;
@@ -74,6 +75,7 @@ export function filterListing<T extends { name: string; type: 'file' | 'dir' }>(
   entries: T[]
 ): T[] {
   if (role === 'admin') return entries;
+  // teacher has same scoped-listing rules as viewer
   const perms = getUserPermissions(userId);
   if (perms.length === 0) return [];
   if (perms.includes('')) return entries;

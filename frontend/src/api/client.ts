@@ -22,7 +22,7 @@ api.interceptors.response.use(
 
 export default api;
 
-export type Role = 'admin' | 'viewer';
+export type Role = 'admin' | 'viewer' | 'teacher';
 export type ShareType = 'file' | 'folder';
 
 export interface FileEntry {

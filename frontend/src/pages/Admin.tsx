@@ -131,7 +131,7 @@ export default function Admin() {
   function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
-    navigate('/login');
+    navigate('/login', { state: { fromLogout: true } });
   }
 
   function selectedPaths(): string[] {

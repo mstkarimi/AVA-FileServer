@@ -32,11 +32,11 @@ export default function UserDialog({ user, onClose, onSaved }: Props) {
     setError('');
     setSaving(true);
     try {
+      const hasPermissions = role === 'viewer' || role === 'teacher';
       if (user) {
         const body: Record<string, unknown> = { role };
         if (password) body.password = password;
-        if (role === 'viewer') body.permissions = permissions;
-        else body.permissions = [];
+        body.permissions = hasPermissions ? permissions : [];
         await api.patch(`/admin/users/${user.id}`, body);
         toast('User updated', 'success');
       } else {
@@ -44,7 +44,7 @@ export default function UserDialog({ user, onClose, onSaved }: Props) {
           username,
           password,
           role,
-          permissions: role === 'viewer' ? permissions : [],
+          permissions: hasPermissions ? permissions : [],
         });
         toast('User created', 'success');
       }
@@ -99,21 +99,30 @@ export default function UserDialog({ user, onClose, onSaved }: Props) {
           <div>
             <label className="block text-sm text-slate-400 mb-1">Role</label>
             <div className="flex gap-2">
-              {(['viewer', 'admin'] as Role[]).map(r => (
+              {([
+                { value: 'viewer',  label: 'بیننده'  },
+                { value: 'teacher', label: 'استاد'   },
+                { value: 'admin',   label: 'Admin'   },
+              ] as { value: Role; label: string }[]).map(({ value, label }) => (
                 <button
                   type="button"
-                  key={r}
-                  onClick={() => setRole(r)}
-                  className={`flex-1 py-2 rounded-lg text-sm capitalize transition-colors
-                    ${role === r ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                  key={value}
+                  onClick={() => setRole(value)}
+                  className={`flex-1 py-2 rounded-lg text-sm transition-colors
+                    ${role === value ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
                 >
-                  {r}
+                  {label}
                 </button>
               ))}
             </div>
+            {role === 'teacher' && (
+              <p className="mt-1.5 text-xs text-slate-500">
+                استاد می‌تواند فایل آپلود کند و لینک اشتراک بسازد — نه mkdir، نه حذف، نه تغییر نام.
+              </p>
+            )}
           </div>
 
-          {role === 'viewer' && (
+          {(role === 'viewer' || role === 'teacher') && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">
                 Folder access ({permissions.length} selected)

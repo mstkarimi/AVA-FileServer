@@ -43,9 +43,22 @@ router.get('/', (req: AuthRequest, res: Response): void => {
   res.json(enriched);
 });
 
-// All mutating endpoints — admin only.
-router.post('/upload', requireAdmin, upload.array('files'), (req: AuthRequest, res: Response): void => {
+// Upload — admin always allowed; teacher allowed only into their permitted folders.
+router.post('/upload', upload.array('files'), (req: AuthRequest, res: Response): void => {
   const qPath = (req.query['path'] as string) || '/';
+
+  if (req.role !== 'admin') {
+    if (req.role !== 'teacher') {
+      res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+      return;
+    }
+    // Teacher: must have direct write-access to the target folder
+    if (!userCanAccess(req.userId!, req.role, qPath, { mode: 'access' })) {
+      res.status(403).json({ error: 'No permission to upload here', code: 'FORBIDDEN' });
+      return;
+    }
+  }
+
   const destDir = safePath(qPath);
 
   if (!Array.isArray(req.files) || req.files.length === 0) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Shield, Eye, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Shield, Eye, RefreshCw, GraduationCap } from 'lucide-react';
 import api, { User } from '../api/client';
 import UserDialog from './UserDialog';
 import { toast } from './Toast';
@@ -88,10 +88,14 @@ export default function UsersTab() {
                   </td>
                   <td className="py-3 pr-4">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs
-                      ${u.role === 'admin' ? 'bg-purple-900/40 text-purple-300' : 'bg-slate-700 text-slate-300'}`}
+                      ${u.role === 'admin'   ? 'bg-purple-900/40 text-purple-300' :
+                        u.role === 'teacher' ? 'bg-amber-900/40  text-amber-300'  :
+                                               'bg-slate-700     text-slate-300'}`}
                     >
-                      {u.role === 'admin' ? <Shield size={11} /> : <Eye size={11} />}
-                      {u.role}
+                      {u.role === 'admin'   ? <Shield        size={11} /> :
+                       u.role === 'teacher' ? <GraduationCap size={11} /> :
+                                             <Eye            size={11} />}
+                      {u.role === 'teacher' ? 'استاد' : u.role}
                     </span>
                   </td>
                   <td className="py-3 pr-4 max-w-xs">

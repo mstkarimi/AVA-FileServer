@@ -15,7 +15,7 @@ interface UserRow {
 }
 
 function isValidRole(r: unknown): r is Role {
-  return r === 'admin' || r === 'viewer';
+  return r === 'admin' || r === 'viewer' || r === 'teacher';
 }
 
 router.get('/', (_req, res: Response) => {
@@ -65,7 +65,7 @@ router.post('/', async (req, res: Response) => {
     .run(username, hash, role, Date.now());
 
   const id = result.lastInsertRowid as number;
-  if (Array.isArray(permissions) && role === 'viewer') {
+  if (Array.isArray(permissions) && (role === 'viewer' || role === 'teacher')) {
     setUserPermissions(id, permissions);
   }
 
@@ -137,8 +137,14 @@ router.patch('/:id', async (req: AuthRequest, res: Response) => {
     db.prepare(`UPDATE users SET ${set.join(', ')} WHERE id = ?`).run(...params);
   }
 
+  // Always honour permissions update for viewer/teacher; admin gets cleared
+  const updatedRole = role || existing.role;
   if (Array.isArray(permissions)) {
-    setUserPermissions(id, permissions);
+    if (updatedRole === 'admin') {
+      setUserPermissions(id, []);
+    } else {
+      setUserPermissions(id, permissions);
+    }
   }
 
   const updated = db
