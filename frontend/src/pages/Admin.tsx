@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LogOut, Upload, FolderPlus, RefreshCw, PanelLeft, Share2, Users, Link2,
 } from 'lucide-react';
@@ -27,7 +27,10 @@ type Modal =
 
 export default function Admin() {
   const navigate = useNavigate();
-  const [currentPath, setCurrentPath] = useState('/');
+  // ── URL-driven folder path (same pattern as Browse) ──────────────────────
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentPath = searchParams.get('path') || '/';
+
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<Modal | null>(null);
@@ -48,11 +51,12 @@ export default function Admin() {
     }
   }, [currentPath]);
 
+  // Reload whenever URL path changes (Back/Forward included)
   useEffect(() => { load(); }, [load]);
 
+  // Push a new browser-history entry so Back walks back through folders
   function navigate_to(path: string) {
-    setCurrentPath(path);
-    load(path);
+    setSearchParams({ path }, { replace: false });
   }
 
   function openEntry(entry: FileEntry) {
@@ -177,8 +181,7 @@ export default function Admin() {
                 navigate_to(r.path);
               } else {
                 const parent = r.path.substring(0, r.path.lastIndexOf('/')) || '/';
-                setCurrentPath(parent);
-                load(parent);
+                setSearchParams({ path: parent }, { replace: false });
               }
             }}
           />
