@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LogOut, RefreshCw, Folder, Eye, Download, Link2, PanelLeft, Upload,
 } from 'lucide-react';
@@ -25,9 +25,16 @@ function formatDate(ms: number): string {
 
 export default function Browse() {
   const navigate = useNavigate();
+  // ── URL-driven folder path ──────────────────────────────────────────────
+  // Store the current folder in the URL query string (?path=/some/folder).
+  // Every folder change pushes a new browser-history entry, so the native
+  // Back button walks back through previously visited folders instead of
+  // jumping straight to the login page.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentPath = searchParams.get('path') || '/';
+
   const role = localStorage.getItem('role') as 'viewer' | 'teacher' | null;
   const isTeacher = role === 'teacher';
-  const [currentPath, setCurrentPath] = useState('/');
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewing, setPreviewing] = useState<{ path: string; name: string } | null>(null);
@@ -52,10 +59,12 @@ export default function Browse() {
     }
   }, []);
 
+  // Reload whenever URL path changes (including browser Back/Forward)
   useEffect(() => { load(currentPath); }, [currentPath, load]);
 
+  // Push a new history entry so Back works naturally
   function navigateTo(p: string) {
-    setCurrentPath(p);
+    setSearchParams({ path: p }, { replace: false });
   }
 
   function openEntry(e: FileEntry) {
@@ -99,7 +108,7 @@ export default function Browse() {
       const url: string = res.data.url;
       await navigator.clipboard.writeText(url).catch(() => {});
       toast('Share link created & copied', 'success');
-      load(currentPath); // refresh to show share icon
+      load(currentPath);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create share';
       toast(msg, 'error');
@@ -111,7 +120,8 @@ export default function Browse() {
       navigateTo(r.path);
     } else {
       const parent = r.path.substring(0, r.path.lastIndexOf('/')) || '/';
-      setCurrentPath(parent);
+      // Navigate to parent folder then open preview
+      setSearchParams({ path: parent }, { replace: false });
       setPreviewing({ path: r.path, name: r.name });
     }
   }
