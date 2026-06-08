@@ -276,7 +276,7 @@ export default function Admin() {
     <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
       {/* Top bar */}
       <header className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0">
-        <button onClick={() => setSidebarOpen(o => !o)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded">
+        <button onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle sidebar" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded">
           <PanelLeft size={20} />
         </button>
 
@@ -321,23 +321,27 @@ export default function Admin() {
               <Link2 size={15} /> Bulk Share ({selected.size})
             </button>
           )}
-          <button
-            onClick={() => { setShowInput('mkdir'); setInputValue(''); }}
-            className="flex items-center gap-1.5 text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <FolderPlus size={15} /> New Folder
-          </button>
-          <button
-            onClick={() => setModal({ type: 'upload' })}
-            className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <Upload size={15} /> Upload
-          </button>
+          {tab === 'files' && (
+            <>
+              <button
+                onClick={() => { setShowInput('mkdir'); setInputValue(''); }}
+                className="hidden sm:flex items-center gap-1.5 text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <FolderPlus size={15} /> New Folder
+              </button>
+              <button
+                onClick={() => setModal({ type: 'upload' })}
+                className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <Upload size={15} /> Upload
+              </button>
+            </>
+          )}
           <ThemeToggle />
-          <button onClick={() => load()} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
+          <button onClick={() => load()} aria-label="Refresh" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
             <RefreshCw size={16} />
           </button>
-          <button onClick={logout} className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
+          <button onClick={logout} aria-label="Log out" title="Log out" className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
             <LogOut size={16} />
           </button>
         </div>

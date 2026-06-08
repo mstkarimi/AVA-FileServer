@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { X, Download } from 'lucide-react';
 
 interface Props {
@@ -22,8 +23,24 @@ export default function PreviewModal({ filePath, fileName, onClose }: Props) {
   const token = localStorage.getItem('token') || '';
   const previewUrl = `/api/preview?path=${encodeURIComponent(filePath)}&t=${encodeURIComponent(token)}`;
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    document.documentElement.classList.add('modal-open');
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.documentElement.classList.remove('modal-open');
+    };
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">
+    <div
+      className="fixed inset-0 bg-black/80 z-50 flex flex-col animate-[fadeIn_120ms_ease-out]"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview of ${fileName}`}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 shrink-0">
         <h3 dir="auto" className="text-sm font-medium text-white truncate max-w-lg">{fileName}</h3>
         <div className="flex items-center gap-2">

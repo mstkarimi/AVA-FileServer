@@ -80,10 +80,11 @@ export default function PermissionPicker({ selected, onChange }: Props) {
         <div
           style={{ paddingLeft: `${depth * 16 + 6}px` }}
           className={`flex items-center gap-2 py-1 pr-2 rounded text-sm
-            ${covered ? 'bg-blue-900/30' : 'hover:bg-slate-700/50'}`}
+            ${covered ? 'bg-blue-100 dark:bg-blue-900/30' : 'hover:bg-slate-100 dark:hover:bg-slate-700/50'}`}
         >
           {/* Clicking the folder name/icon EXPANDS to reveal subfolders (item 10) */}
           <button
+            type="button"
             onClick={expand}
             className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
             title="Open subfolders"
@@ -92,18 +93,19 @@ export default function PermissionPicker({ selected, onChange }: Props) {
               size={14}
               className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''} ${loaded && hasChildren === false ? 'opacity-25' : ''}`}
             />
-            <Folder size={14} className="text-yellow-400 shrink-0" />
-            <span dir="auto" className="flex-1 text-slate-200 truncate">{node.name}</span>
+            <Folder size={14} className="text-yellow-500 dark:text-yellow-400 shrink-0" />
+            <span dir="auto" className="flex-1 text-slate-700 dark:text-slate-200 truncate">{node.name}</span>
           </button>
 
           {/* Checkbox is the ONLY way to grant access to this exact folder */}
           <button
+            type="button"
             onClick={() => toggleSelect(node.path)}
             className={`shrink-0 w-5 h-5 rounded border flex items-center justify-center transition
-              ${direct ? 'bg-blue-600 border-blue-500' : covered ? 'bg-blue-900/40 border-blue-600/50' : 'border-slate-500 hover:border-blue-400'}`}
+              ${direct ? 'bg-blue-600 border-blue-500' : covered ? 'bg-blue-200 border-blue-400 dark:bg-blue-900/40 dark:border-blue-600/50' : 'border-slate-400 dark:border-slate-500 hover:border-blue-400'}`}
             title={covered && !direct ? 'Already covered by a selected parent folder' : 'Grant access to this folder'}
           >
-            {(direct || covered) && <Check size={12} className="text-white" />}
+            {(direct || covered) && <Check size={12} className={direct ? 'text-white' : 'text-blue-700 dark:text-white'} />}
           </button>
         </div>
         {open && children.map(c => <NodeRow key={c.path} node={c} depth={depth + 1} />)}
@@ -117,8 +119,8 @@ export default function PermissionPicker({ selected, onChange }: Props) {
   }
 
   return (
-    <div className="bg-slate-900/40 border border-slate-700 rounded-lg p-2 max-h-72 overflow-y-auto">
-      <p className="text-[11px] text-slate-500 px-1 pb-1.5 mb-1 border-b border-slate-700/60">
+    <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-lg p-2 max-h-72 overflow-y-auto">
+      <p className="text-[11px] text-slate-500 px-1 pb-1.5 mb-1 border-b border-slate-200 dark:border-slate-700/60">
         Click a folder name to open its subfolders · tick the box to grant access.
       </p>
       {roots.length === 0 && (

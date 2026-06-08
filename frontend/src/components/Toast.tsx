@@ -35,10 +35,11 @@ export function ToastContainer() {
       {toasts.map(t => (
         <div
           key={t.id}
-          className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg pointer-events-auto text-sm
-            ${t.type === 'success' ? 'bg-green-900 border border-green-700 text-green-200' : ''}
-            ${t.type === 'error' ? 'bg-red-900 border border-red-700 text-red-200' : ''}
-            ${t.type === 'info' ? 'bg-slate-700 border border-slate-600 text-slate-200' : ''}
+          role="status"
+          className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg pointer-events-auto text-sm animate-[popIn_140ms_ease-out]
+            ${t.type === 'success' ? 'bg-green-50 border border-green-300 text-green-800 dark:bg-green-900 dark:border-green-700 dark:text-green-200' : ''}
+            ${t.type === 'error' ? 'bg-red-50 border border-red-300 text-red-800 dark:bg-red-900 dark:border-red-700 dark:text-red-200' : ''}
+            ${t.type === 'info' ? 'bg-white border border-slate-300 text-slate-800 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200' : ''}
           `}
         >
           {t.type === 'success' && <CheckCircle size={16} className="mt-0.5 shrink-0" />}

@@ -12,9 +12,43 @@ html.dark { color-scheme: dark; }
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   background-color: #f8fafc; /* slate-50 */
   color: #0f172a;            /* slate-900 */
   transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* Accessibility: a clear, consistent focus ring for keyboard users only.
+   Mouse clicks don't trigger :focus-visible, so this stays clean visually. */
+:focus-visible {
+  outline: 2px solid #3b82f6; /* blue-500 */
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Remove the default outline only when our focus-visible ring isn't applicable */
+:focus:not(:focus-visible) { outline: none; }
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Lock background scroll when a modal sets this on <html> */
+html.modal-open, html.modal-open body { overflow: hidden; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 html.dark body {

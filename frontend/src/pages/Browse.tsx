@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LogOut, RefreshCw, Folder, Eye, Download, Link2, PanelLeft, Upload,
+  Music, Video, Image as ImageIcon, FileText, File as FileIcon,
 } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
@@ -21,6 +22,16 @@ function formatSize(bytes: number): string {
 
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString();
+}
+
+function fileIcon(entry: FileEntry) {
+  if (entry.type === 'dir') return <Folder size={16} className="text-yellow-500 dark:text-yellow-400 shrink-0" />;
+  const ext = entry.name.split('.').pop()?.toLowerCase() || '';
+  if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext)) return <Music size={16} className="text-blue-500 dark:text-blue-400 shrink-0" />;
+  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return <Video size={16} className="text-purple-500 dark:text-purple-400 shrink-0" />;
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return <ImageIcon size={16} className="text-green-500 dark:text-green-400 shrink-0" />;
+  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return <FileText size={16} className="text-orange-500 dark:text-orange-400 shrink-0" />;
+  return <FileIcon size={16} className="text-slate-400 shrink-0" />;
 }
 
 export default function Browse() {
@@ -138,7 +149,7 @@ export default function Browse() {
     <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
       {/* Top bar */}
       <header className="flex items-center gap-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0">
-        <button onClick={() => setSidebarOpen(o => !o)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded">
+        <button onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle sidebar" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded">
           <PanelLeft size={20} />
         </button>
 
@@ -159,10 +170,10 @@ export default function Browse() {
             <span>آپلود</span>
           </button>
         )}
-        <button onClick={() => load(currentPath)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
+        <button onClick={() => load(currentPath)} aria-label="Refresh" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
           <RefreshCw size={16} />
         </button>
-        <button onClick={logout} className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Logout">
+        <button onClick={logout} aria-label="Log out" className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Log out">
           <LogOut size={16} />
         </button>
       </header>
@@ -221,14 +232,10 @@ export default function Browse() {
                     <td className="px-4 py-2.5">
                       <button
                         onClick={() => openEntry(e)}
-                        className="flex items-center gap-2 text-left w-full"
+                        className="group flex items-center gap-2 text-left w-full"
                       >
-                        {e.type === 'dir' ? (
-                          <Folder size={16} className="text-yellow-500 dark:text-yellow-400 shrink-0" />
-                        ) : (
-                          <span className="w-4 h-4 shrink-0" />
-                        )}
-                        <span dir="auto" className="text-sm text-slate-800 dark:text-slate-200 truncate">{e.name}</span>
+                        {fileIcon(e)}
+                        <span dir="auto" className="text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">{e.name}</span>
                         {e.shareUrl && (
                           <span title="Has a public share link" className="ml-1 shrink-0 text-blue-500 dark:text-blue-400">
                             <Link2 size={12} />
