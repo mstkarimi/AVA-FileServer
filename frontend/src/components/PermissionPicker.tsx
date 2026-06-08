@@ -60,11 +60,13 @@ export default function PermissionPicker({ selected, onChange }: Props) {
     const [open, setOpen] = useState(false);
     const [children, setChildren] = useState<Node[]>([]);
     const [loaded, setLoaded] = useState(false);
+    const [hasChildren, setHasChildren] = useState<boolean | null>(null);
 
     async function expand() {
       if (!loaded) {
         const k = await fetchDirs(node.path);
         setChildren(k);
+        setHasChildren(k.length > 0);
         setLoaded(true);
       }
       setOpen(o => !o);
@@ -77,32 +79,48 @@ export default function PermissionPicker({ selected, onChange }: Props) {
       <div>
         <div
           style={{ paddingLeft: `${depth * 16 + 6}px` }}
-          className={`flex items-center gap-2 py-1 pr-2 rounded text-sm cursor-pointer
+          className={`flex items-center gap-2 py-1 pr-2 rounded text-sm
             ${covered ? 'bg-blue-900/30' : 'hover:bg-slate-700/50'}`}
         >
-          <button onClick={expand} className="text-slate-400 hover:text-white shrink-0 p-0.5">
-            <ChevronRight size={14} className={open ? 'rotate-90' : ''} />
+          {/* Clicking the folder name/icon EXPANDS to reveal subfolders (item 10) */}
+          <button
+            onClick={expand}
+            className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
+            title="Open subfolders"
+          >
+            <ChevronRight
+              size={14}
+              className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''} ${loaded && hasChildren === false ? 'opacity-25' : ''}`}
+            />
+            <Folder size={14} className="text-yellow-400 shrink-0" />
+            <span dir="auto" className="flex-1 text-slate-200 truncate">{node.name}</span>
           </button>
-          <Folder size={14} className="text-yellow-400 shrink-0" />
-          <span dir="auto" className="flex-1 text-slate-200 truncate" onClick={() => toggleSelect(node.path)}>
-            {node.name}
-          </span>
+
+          {/* Checkbox is the ONLY way to grant access to this exact folder */}
           <button
             onClick={() => toggleSelect(node.path)}
             className={`shrink-0 w-5 h-5 rounded border flex items-center justify-center transition
-              ${direct ? 'bg-blue-600 border-blue-500' : covered ? 'bg-blue-900/40 border-blue-600/50' : 'border-slate-500'}`}
-            title={covered && !direct ? 'covered by parent' : 'toggle'}
+              ${direct ? 'bg-blue-600 border-blue-500' : covered ? 'bg-blue-900/40 border-blue-600/50' : 'border-slate-500 hover:border-blue-400'}`}
+            title={covered && !direct ? 'Already covered by a selected parent folder' : 'Grant access to this folder'}
           >
             {(direct || covered) && <Check size={12} className="text-white" />}
           </button>
         </div>
         {open && children.map(c => <NodeRow key={c.path} node={c} depth={depth + 1} />)}
+        {open && loaded && hasChildren === false && (
+          <div style={{ paddingLeft: `${(depth + 1) * 16 + 24}px` }} className="text-xs text-slate-500 py-0.5">
+            no subfolders
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <div className="bg-slate-900/40 border border-slate-700 rounded-lg p-2 max-h-72 overflow-y-auto">
+      <p className="text-[11px] text-slate-500 px-1 pb-1.5 mb-1 border-b border-slate-700/60">
+        Click a folder name to open its subfolders · tick the box to grant access.
+      </p>
       {roots.length === 0 && (
         <p className="text-xs text-slate-500 p-3 text-center">No folders to grant. Create some first.</p>
       )}

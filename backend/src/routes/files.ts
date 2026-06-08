@@ -3,11 +3,12 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
-import { listDir, deleteEntry, moveEntry, makeDir, renameEntry } from '../services/fileService';
+import { listDir, moveEntry, makeDir, renameEntry } from '../services/fileService';
 import { safePath } from '../utils/safePath';
 import { config } from '../config';
 import { userCanAccess, filterListing } from '../services/permissionService';
 import { getSharesForPaths, shareUrl } from '../services/shareService';
+import { moveToTrash } from '../services/trashService';
 
 const router = Router();
 router.use(requireAuth);
@@ -77,15 +78,16 @@ router.post('/upload', upload.array('files'), (req: AuthRequest, res: Response):
   res.json(results);
 });
 
+// Web deletes move the entry into the trash (item 14) so it can be restored
+// within the retention window. Permanent removal happens via the Trash tab.
 router.delete('/', requireAdmin, (req: AuthRequest, res: Response): void => {
   const qPath = (req.query['path'] as string) || '';
-  const recursive = req.query['recursive'] === 'true';
   if (!qPath) {
     res.status(400).json({ error: 'Path required', code: 'MISSING_PATH' });
     return;
   }
-  deleteEntry(qPath, recursive);
-  res.json({ ok: true });
+  const item = moveToTrash(qPath, req.userId ?? null);
+  res.json({ ok: true, trashed: true, id: item.id });
 });
 
 router.post('/move', requireAdmin, (req: AuthRequest, res: Response): void => {

@@ -10,6 +10,8 @@ import previewRouter from './routes/preview';
 import publicRouter from './routes/public';
 import usersRouter from './routes/users';
 import searchRouter from './routes/search';
+import trashRouter from './routes/trash';
+import { purgeExpired } from './services/trashService';
 
 const app = express();
 
@@ -26,6 +28,7 @@ app.use('/api/shares', sharesRouter);
 app.use('/api/preview', previewRouter);
 app.use('/api/admin/users', usersRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/trash', trashRouter);
 app.use('/s', publicRouter);
 
 // 404 for unknown API routes
@@ -36,6 +39,10 @@ app.use('/api', (_req, res) => {
 app.use(errorHandler);
 
 initDb();
+
+// Item 14: purge expired trash on boot, then hourly.
+purgeExpired();
+setInterval(purgeExpired, 60 * 60 * 1000);
 
 app.listen(config.port, '127.0.0.1', () => {
   logger.info({ port: config.port }, 'File server started');

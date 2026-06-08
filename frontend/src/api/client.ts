@@ -25,6 +25,16 @@ export default api;
 export type Role = 'admin' | 'viewer' | 'teacher';
 export type ShareType = 'file' | 'folder';
 
+/** Display label for a role. Internal value stays 'teacher'/'viewer' for compatibility. */
+export function roleLabel(role: Role | string): string {
+  switch (role) {
+    case 'admin': return 'Admin';
+    case 'teacher': return 'Uploader';
+    case 'viewer': return 'Viewer';
+    default: return role;
+  }
+}
+
 export interface FileEntry {
   name: string;
   type: 'file' | 'dir';
@@ -42,6 +52,9 @@ export interface Share {
   createdAt: number;
   downloadCount: number;
   lastAccessedAt: number | null;
+  revokedAt: number | null;
+  active: boolean;
+  createdBy: string | null;
 }
 
 export interface User {
@@ -67,4 +80,15 @@ export interface BulkShareItem {
   url?: string;
   type?: ShareType;
   error?: string;
+}
+
+export interface TrashItem {
+  id: number;
+  name: string;
+  originalPath: string;
+  type: 'file' | 'dir';
+  size: number;
+  deletedBy: string | null;
+  deletedAt: number;
+  expiresAt: number;
 }

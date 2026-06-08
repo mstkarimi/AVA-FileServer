@@ -100,9 +100,9 @@ export default function UserDialog({ user, onClose, onSaved }: Props) {
             <label className="block text-sm text-slate-400 mb-1">Role</label>
             <div className="flex gap-2">
               {([
-                { value: 'viewer',  label: 'بیننده'  },
-                { value: 'teacher', label: 'استاد'   },
-                { value: 'admin',   label: 'Admin'   },
+                { value: 'viewer',  label: 'Viewer'   },
+                { value: 'teacher', label: 'Uploader' },
+                { value: 'admin',   label: 'Admin'    },
               ] as { value: Role; label: string }[]).map(({ value, label }) => (
                 <button
                   type="button"
@@ -117,7 +117,7 @@ export default function UserDialog({ user, onClose, onSaved }: Props) {
             </div>
             {role === 'teacher' && (
               <p className="mt-1.5 text-xs text-slate-500">
-                استاد می‌تواند فایل آپلود کند و لینک اشتراک بسازد — نه mkdir، نه حذف، نه تغییر نام.
+                Uploader می‌تواند فایل آپلود کند و لینک اشتراک بسازد — نه ساخت پوشه، نه حذف، نه تغییر نام.
               </p>
             )}
           </div>

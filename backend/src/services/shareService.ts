@@ -26,6 +26,12 @@ export interface Share {
   created_at: number;
   download_count: number;
   last_accessed_at: number | null;
+  revoked_at: number | null;
+}
+
+/** Share row enriched with the creator's username (for the admin Manage Shares view). */
+export interface ShareWithCreator extends Share {
+  created_by_username: string | null;
 }
 
 export function createShare(
@@ -50,15 +56,19 @@ export function getShareByHash(hash: string): Share | undefined {
 }
 
 /**
- * Look up the latest share for each given relative path. Used to enrich file listings
- * so viewers can copy a previously-published link without contacting the admin.
+ * Look up the latest ACTIVE share for each given relative path. Used to enrich
+ * file listings so viewers can copy a working published link without contacting
+ * the admin. Revoked links are ignored so the "copy link" shortcut never points
+ * at a dead URL.
  */
 export function getSharesForPaths(paths: string[]): Map<string, Share> {
   const map = new Map<string, Share>();
   if (paths.length === 0) return map;
   const placeholders = paths.map(() => '?').join(',');
   const rows = getDb()
-    .prepare(`SELECT * FROM shares WHERE file_path IN (${placeholders}) ORDER BY created_at DESC`)
+    .prepare(
+      `SELECT * FROM shares WHERE file_path IN (${placeholders}) AND revoked_at IS NULL ORDER BY created_at DESC`
+    )
     .all(...paths) as Share[];
   for (const r of rows) {
     if (!map.has(r.file_path)) map.set(r.file_path, r); // most recent (DESC ordering)
@@ -66,12 +76,35 @@ export function getSharesForPaths(paths: string[]): Map<string, Share> {
   return map;
 }
 
-export function listShares(): Share[] {
-  return getDb().prepare('SELECT * FROM shares ORDER BY created_at DESC').all() as Share[];
+/** List all shares (active + revoked) with the creator's username for the admin view. */
+export function listShares(): ShareWithCreator[] {
+  return getDb()
+    .prepare(
+      `SELECT s.*, u.username AS created_by_username
+         FROM shares s
+         LEFT JOIN users u ON u.id = s.created_by
+        ORDER BY s.created_at DESC`
+    )
+    .all() as ShareWithCreator[];
 }
 
+/** Hard delete — permanently removes the share row. */
 export function deleteShare(id: number): boolean {
   return getDb().prepare('DELETE FROM shares WHERE id = ?').run(id).changes > 0;
+}
+
+/** Soft revoke — link stops resolving but the row stays for audit/stats. */
+export function revokeShare(id: number): boolean {
+  return getDb()
+    .prepare('UPDATE shares SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL')
+    .run(Date.now(), id).changes > 0;
+}
+
+/** Re-activate a previously revoked share. */
+export function unrevokeShare(id: number): boolean {
+  return getDb()
+    .prepare('UPDATE shares SET revoked_at = NULL WHERE id = ?')
+    .run(id).changes > 0;
 }
 
 export function incrementDownload(id: number): void {

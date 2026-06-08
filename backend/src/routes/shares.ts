@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
-import { createShare, listShares, deleteShare, shareUrl, ShareType } from '../services/shareService';
+import { createShare, listShares, deleteShare, revokeShare, unrevokeShare, shareUrl, ShareType } from '../services/shareService';
 import { safePath } from '../utils/safePath';
 import { config } from '../config';
 import { userCanAccess } from '../services/permissionService';
@@ -187,10 +187,42 @@ router.get('/', requireAdmin, (_req: AuthRequest, res: Response): void => {
     createdAt: s.created_at,
     downloadCount: s.download_count,
     lastAccessedAt: s.last_accessed_at,
+    revokedAt: s.revoked_at,
+    active: s.revoked_at === null,
+    createdBy: s.created_by_username,
   }));
   res.json(shares);
 });
 
+// Soft-revoke a share (link stops working, row kept for audit/stats)
+router.post('/:id/revoke', requireAdmin, (req: AuthRequest, res: Response): void => {
+  const id = parseInt(req.params['id'], 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
+    return;
+  }
+  if (!revokeShare(id)) {
+    res.status(404).json({ error: 'Share not found or already revoked', code: 'NOT_FOUND' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// Re-activate a revoked share
+router.post('/:id/unrevoke', requireAdmin, (req: AuthRequest, res: Response): void => {
+  const id = parseInt(req.params['id'], 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
+    return;
+  }
+  if (!unrevokeShare(id)) {
+    res.status(404).json({ error: 'Share not found', code: 'NOT_FOUND' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// Hard delete a share permanently
 router.delete('/:id', requireAdmin, (req: AuthRequest, res: Response): void => {
   const id = parseInt(req.params['id'], 10);
   if (isNaN(id)) {

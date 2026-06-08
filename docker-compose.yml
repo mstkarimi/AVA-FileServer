@@ -11,6 +11,7 @@ services:
     volumes:
       - ./data/files:/data/files
       - ./data/db:/data/db
+      - ./data/trash:/data/trash
       - ./data/branding:/data/branding
       - ./certs:/data/certs
     environment:

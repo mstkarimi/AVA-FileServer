@@ -13,7 +13,10 @@ export const config = {
   sftpPassword: require_env('SFTP_PASSWORD'),
   publicUrl: require_env('PUBLIC_URL'),
   filesRoot: process.env['FILES_ROOT'] || '/data/files',
+  trashRoot: process.env['TRASH_ROOT'] || '/data/trash',
   dbPath: process.env['DB_PATH'] || '/data/db/fileserver.db',
   jwtExpiry: '24h',
   uploadMaxBytes: 100 * 1024 * 1024, // 100 MB
+  // Item 14: how long deleted items stay recoverable in the trash
+  trashRetentionDays: parseInt(process.env['TRASH_RETENTION_DAYS'] || '30', 10),
 } as const;

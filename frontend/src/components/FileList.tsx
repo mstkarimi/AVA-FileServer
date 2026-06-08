@@ -4,6 +4,7 @@ import {
   Share2, Eye, Pencil, Move, MoreVertical, ChevronUp, ChevronDown, Link2,
 } from 'lucide-react';
 import { FileEntry } from '../api/client';
+import { toast } from './Toast';
 
 function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text);
@@ -35,21 +36,25 @@ type SortKey = 'name' | 'size' | 'modified';
 interface Props {
   entries: FileEntry[];
   selected: Set<string>;
-  onSelect: (name: string, multi: boolean) => void;
+  onSelect: (name: string) => void;          // toggle one item in/out of the selection
+  onSelectAll: (names: string[], select: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onPreview: (entry: FileEntry) => void;
   onShare: (entry: FileEntry) => void;
   onRename: (entry: FileEntry) => void;
   onMove: (entry: FileEntry) => void;
+  onMoveInto?: (sourceName: string, destFolderName: string) => void;   // item 15: drag-drop move
   onDelete: (entries: FileEntry[]) => void;
 }
 
 export default function FileList({
-  entries, selected, onSelect, onOpen, onPreview, onShare, onRename, onMove, onDelete,
+  entries, selected, onSelect, onSelectAll, onOpen, onPreview, onShare, onRename, onMove, onMoveInto, onDelete,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortAsc, setSortAsc] = useState(true);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [dragOverName, setDragOverName] = useState<string | null>(null);
+  const [draggingName, setDraggingName] = useState<string | null>(null);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortAsc(a => !a);
@@ -78,6 +83,8 @@ export default function FileList({
   }
 
   const selectedEntries = sorted.filter(e => selected.has(e.name));
+  const allSelected = sorted.length > 0 && sorted.every(e => selected.has(e.name));
+  const someSelected = sorted.some(e => selected.has(e.name)) && !allSelected;
 
   return (
     <div className="flex flex-col h-full" onClick={() => setMenuOpen(null)}>
@@ -90,11 +97,26 @@ export default function FileList({
           >
             <Trash2 size={14} /> Delete all
           </button>
+          <button
+            onClick={() => onSelectAll(sorted.map(e => e.name), false)}
+            className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            Clear selection
+          </button>
         </div>
       )}
 
       <div className="grid grid-cols-[auto_1fr_100px_160px_120px] gap-0 border-b border-slate-200 dark:border-slate-700 px-4 py-2">
-        <div className="w-5" />
+        <label className="w-5 flex items-center" onClick={e => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={el => { if (el) el.indeterminate = someSelected; }}
+            onChange={() => onSelectAll(sorted.map(e => e.name), !allSelected)}
+            className="w-4 h-4 accent-blue-500 cursor-pointer"
+            title={allSelected ? 'Deselect all' : 'Select all'}
+          />
+        </label>
         <SortHeader label="Name" k="name" />
         <SortHeader label="Size" k="size" />
         <SortHeader label="Modified" k="modified" />
@@ -108,26 +130,54 @@ export default function FileList({
         {sorted.map(entry => (
           <div
             key={entry.name}
+            draggable={!!onMoveInto}
+            onDragStart={e => {
+              e.dataTransfer.setData('text/plain', entry.name);
+              e.dataTransfer.effectAllowed = 'move';
+              setDraggingName(entry.name);
+            }}
+            onDragEnd={() => { setDraggingName(null); setDragOverName(null); }}
+            onDragOver={entry.type === 'dir' && onMoveInto ? (e) => {
+              if (draggingName && draggingName !== entry.name) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverName(entry.name); }
+            } : undefined}
+            onDragLeave={entry.type === 'dir' ? () => setDragOverName(n => n === entry.name ? null : n) : undefined}
+            onDrop={entry.type === 'dir' && onMoveInto ? (e) => {
+              e.preventDefault();
+              const src = e.dataTransfer.getData('text/plain');
+              setDragOverName(null);
+              setDraggingName(null);
+              if (src && src !== entry.name) onMoveInto(src, entry.name);
+            } : undefined}
             onDoubleClick={() => onOpen(entry)}
-            onClick={e => onSelect(entry.name, e.ctrlKey || e.metaKey)}
-            className={`grid grid-cols-[auto_1fr_100px_160px_120px] items-center gap-0 px-4 py-2 cursor-pointer border-b border-slate-200 dark:border-slate-800
+            className={`group grid grid-cols-[auto_1fr_100px_160px_120px] items-center gap-0 px-4 py-2 cursor-pointer border-b border-slate-200 dark:border-slate-800
               hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors
               ${selected.has(entry.name) ? 'bg-blue-50 dark:bg-blue-900/30' : ''}
+              ${dragOverName === entry.name ? 'ring-2 ring-inset ring-blue-500 bg-blue-100 dark:bg-blue-900/40' : ''}
+              ${draggingName === entry.name ? 'opacity-50' : ''}
             `}
           >
-            <input
-              type="checkbox"
-              checked={selected.has(entry.name)}
-              onChange={e => { e.stopPropagation(); onSelect(entry.name, true); }}
-              className="w-4 h-4 mr-3 accent-blue-500"
-            />
-            <div className="flex items-center gap-2 min-w-0">
+            {/* Checkbox is the sole selection control; its clicks never bubble to the row */}
+            <label
+              className="w-5 flex items-center"
+              onClick={e => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(entry.name)}
+                onChange={() => onSelect(entry.name)}
+                className="w-4 h-4 accent-blue-500 cursor-pointer"
+              />
+            </label>
+            <div
+              className="flex items-center gap-2 min-w-0"
+              title={entry.type === 'dir' ? 'Double-click to open' : 'Double-click to preview'}
+            >
               {fileIcon(entry)}
-              <span dir="auto" className="truncate text-sm text-slate-900 dark:text-slate-200">{entry.name}</span>
+              <span dir="auto" className="truncate text-sm text-slate-900 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400">{entry.name}</span>
               {entry.shareUrl && (
                 <button
-                  onClick={e => { e.stopPropagation(); copyToClipboard(entry.shareUrl!); }}
-                  title="Copy existing share link"
+                  onClick={e => { e.stopPropagation(); copyToClipboard(entry.shareUrl!); toast('Share link copied', 'success'); }}
+                  title="Copy active share link"
                   className="shrink-0 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 p-0.5"
                 >
                   <Link2 size={13} />

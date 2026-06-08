@@ -53,6 +53,12 @@ export function initDb(): void {
     logger.info('migration: added shares.share_type');
   }
 
+  // Migration: revoked_at on shares (soft-revoke — link stops working but stays for audit)
+  if (!shareCols.some(c => c.name === 'revoked_at')) {
+    db.exec('ALTER TABLE shares ADD COLUMN revoked_at INTEGER');
+    logger.info('migration: added shares.revoked_at');
+  }
+
   // Migration: user_permissions table
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_permissions (
@@ -63,6 +69,22 @@ export function initDb(): void {
       UNIQUE(user_id, folder_path)
     );
     CREATE INDEX IF NOT EXISTS idx_perms_user ON user_permissions(user_id);
+  `);
+
+  // Migration: trash table (item 14 — recoverable deletes)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS trash (
+      id INTEGER PRIMARY KEY,
+      token TEXT UNIQUE NOT NULL,
+      original_path TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      size INTEGER DEFAULT 0,
+      deleted_by INTEGER REFERENCES users(id),
+      deleted_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_trash_expires ON trash(expires_at);
   `);
 
   seedAdmin();

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LogOut, Upload, FolderPlus, RefreshCw, PanelLeft, Share2, Users, Link2,
+  FolderOpen, Pencil, Trash2, Link as LinkIcon,
 } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
@@ -11,6 +12,7 @@ import PreviewModal from '../components/PreviewModal';
 import ShareDialog from '../components/ShareDialog';
 import ShareManager from '../components/ShareManager';
 import UsersTab from '../components/UsersTab';
+import TrashTab from '../components/TrashTab';
 import BulkShareModal from '../components/BulkShareModal';
 import SearchBar from '../components/SearchBar';
 import Brand from '../components/Brand';
@@ -27,19 +29,21 @@ type Modal =
 
 export default function Admin() {
   const navigate = useNavigate();
-  // ── URL-driven folder path (same pattern as Browse) ──────────────────────
+  // ── URL-driven folder path + tab (so browser Back works everywhere) ───────
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPath = searchParams.get('path') || '/';
+  const tab = (searchParams.get('tab') as 'files' | 'shares' | 'users' | 'trash') || 'files';
 
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<Modal | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [tab, setTab] = useState<'files' | 'shares' | 'users'>('files');
   const [bulkShareOpen, setBulkShareOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showInput, setShowInput] = useState<'rename' | 'mkdir' | 'move' | null>(null);
   const [pendingEntry, setPendingEntry] = useState<FileEntry | null>(null);
+  // Item 13: custom right-click context menu on sidebar folders
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; name: string } | null>(null);
 
   const load = useCallback(async (path = currentPath) => {
     try {
@@ -56,27 +60,146 @@ export default function Admin() {
 
   // Push a new browser-history entry so Back walks back through folders
   function navigate_to(path: string) {
-    setSearchParams({ path }, { replace: false });
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('path', path);
+      next.set('tab', 'files');
+      return next;
+    }, { replace: false });
+  }
+
+  // Switch tab via URL so the browser Back button steps through tab changes too
+  function setTab(t: 'files' | 'shares' | 'users' | 'trash') {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', t);
+      return next;
+    }, { replace: false });
   }
 
   function openEntry(entry: FileEntry) {
     if (entry.type === 'dir') {
       const newPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
       navigate_to(newPath);
+    } else {
+      // Item 4: open file → preview
+      setModal({ type: 'preview', entry });
     }
   }
 
-  function toggleSelect(name: string, multi: boolean) {
+  // Item 5: forgiving multi-select. Each toggle adds/removes one item independently.
+  function toggleSelect(name: string) {
     setSelected(prev => {
-      const next = multi ? new Set(prev) : new Set<string>();
+      const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
       return next;
     });
   }
 
+  function selectAll(names: string[], select: boolean) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (select) names.forEach(n => next.add(n));
+      else names.forEach(n => next.delete(n));
+      return next;
+    });
+  }
+
+  // ── Item 15: drag-and-drop move ──────────────────────────────────────────
+  async function doMove(from: string, to: string, destLabel: string) {
+    if (from === to) return;
+    // Guard: can't move a folder into itself / its own descendant
+    if (to.startsWith(from + '/')) {
+      toast("Can't move a folder into itself", 'error');
+      return;
+    }
+    try {
+      await api.post('/files/move', { from, to });
+      toast(`Moved into ${destLabel}`, 'success');
+      load();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Move failed (target may already exist)';
+      toast(msg, 'error');
+    }
+  }
+
+  // Drop a listing item onto a folder row in the same listing
+  function moveInto(sourceName: string, destFolderName: string) {
+    const base = currentPath === '/' ? '' : currentPath;
+    const from = `${base}/${sourceName}`;
+    const to = `${base}/${destFolderName}/${sourceName}`;
+    doMove(from, to, destFolderName);
+  }
+
+  // Drop a listing item onto any folder in the sidebar tree (destPath has leading slash)
+  function moveToPath(sourceName: string, destPath: string) {
+    const base = currentPath === '/' ? '' : currentPath;
+    const from = `${base}/${sourceName}`;
+    const to = `${destPath}/${sourceName}`;
+    doMove(from, to, destPath.split('/').pop() || destPath);
+  }
+
+  // ── Context-menu actions (operate on an explicit folder path, leading slash) ──
+  function openContextMenu(e: { preventDefault: () => void; clientX: number; clientY: number }, path: string, name: string) {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, path, name });
+  }
+
+  async function ctxShareFolder(path: string) {
+    try {
+      const res = await api.post('/shares', { filePath: path, type: 'folder' });
+      await navigator.clipboard.writeText(res.data.url).catch(() => {});
+      toast('Folder share link created & copied', 'success');
+      load();
+    } catch {
+      toast('Failed to create share link', 'error');
+    }
+  }
+
+  async function ctxRename(path: string, name: string) {
+    const nn = window.prompt('Rename folder to:', name);
+    if (!nn || !nn.trim() || nn.trim() === name) return;
+    try {
+      await api.post('/files/rename', { path, newName: nn.trim() });
+      toast('Renamed', 'success');
+      load();
+    } catch {
+      toast('Rename failed', 'error');
+    }
+  }
+
+  async function ctxNewSubfolder(path: string) {
+    const nn = window.prompt('New folder name:');
+    if (!nn || !nn.trim()) return;
+    try {
+      await api.post('/files/mkdir', { path, name: nn.trim() });
+      toast('Folder created', 'success');
+      if (currentPath === path) load();
+    } catch {
+      toast('Create folder failed', 'error');
+    }
+  }
+
+  async function ctxDeleteFolder(path: string, name: string) {
+    if (!confirm(`Move this folder and all its contents to Trash?\n\n• ${name}\n\n(Recoverable from the Trash tab.)`)) return;
+    try {
+      await api.delete('/files', { params: { path, recursive: true } });
+      toast('Moved to Trash', 'success');
+      if (currentPath === path || currentPath.startsWith(path + '/')) navigate_to('/');
+      else load();
+    } catch {
+      toast('Delete failed', 'error');
+    }
+  }
+
   async function handleDelete(entriesToDelete: FileEntry[]) {
-    if (!confirm(`Delete ${entriesToDelete.length} item(s)?`)) return;
+    if (entriesToDelete.length === 0) return;
+    const names = entriesToDelete.map(e => `• ${e.name}`).join('\n');
+    const prompt = entriesToDelete.length === 1
+      ? `Move this ${entriesToDelete[0].type === 'dir' ? 'folder' : 'file'} to Trash?\n\n${names}\n\n(Recoverable from the Trash tab.)`
+      : `Move these ${entriesToDelete.length} items to Trash?\n\n${names}\n\n(Recoverable from the Trash tab.)`;
+    if (!confirm(prompt)) return;
     for (const e of entriesToDelete) {
       const p = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`;
       try {
@@ -85,7 +208,7 @@ export default function Admin() {
         toast(`Failed to delete ${e.name}`, 'error');
       }
     }
-    toast('Deleted', 'success');
+    toast('Moved to Trash', 'success');
     load();
   }
 
@@ -181,7 +304,8 @@ export default function Admin() {
                 navigate_to(r.path);
               } else {
                 const parent = r.path.substring(0, r.path.lastIndexOf('/')) || '/';
-                setSearchParams({ path: parent }, { replace: false });
+                navigate_to(parent);
+                setModal({ type: 'preview', entry: { name: r.name, type: 'file', size: r.size, modified: r.modified } });
               }
             }}
           />
@@ -239,6 +363,12 @@ export default function Admin() {
         >
           <Users size={14} /> Users
         </button>
+        <button
+          onClick={() => setTab('trash')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === 'trash' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
+        >
+          <Trash2 size={14} /> Trash
+        </button>
       </div>
 
       {tab === 'shares' ? (
@@ -249,6 +379,10 @@ export default function Admin() {
         <div className="flex-1 overflow-y-auto">
           <UsersTab />
         </div>
+      ) : tab === 'trash' ? (
+        <div className="flex-1 overflow-y-auto">
+          <TrashTab />
+        </div>
       ) : (
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
@@ -257,7 +391,7 @@ export default function Admin() {
               <div className="px-3 py-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
                 Folders
               </div>
-              <FileTree currentPath={currentPath} onNavigate={navigate_to} />
+              <FileTree currentPath={currentPath} onNavigate={navigate_to} onFolderContextMenu={openContextMenu} onDropMove={moveToPath} />
             </aside>
           )}
 
@@ -306,6 +440,8 @@ export default function Admin() {
               entries={entries}
               selected={selected}
               onSelect={toggleSelect}
+              onSelectAll={selectAll}
+              onMoveInto={moveInto}
               onOpen={openEntry}
               onPreview={entry => setModal({ type: 'preview', entry })}
               onShare={entry => setModal({ type: 'share', entry })}
@@ -352,6 +488,40 @@ export default function Admin() {
           hasFolders={selectedHasFolders()}
           onClose={() => setBulkShareOpen(false)}
         />
+      )}
+
+      {/* Item 13: custom context menu for sidebar folders */}
+      {ctxMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} onContextMenu={e => { e.preventDefault(); setCtxMenu(null); }} />
+          <div
+            className="fixed z-50 w-52 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl py-1 text-sm"
+            style={{ left: Math.min(ctxMenu.x, window.innerWidth - 220), top: Math.min(ctxMenu.y, window.innerHeight - 240) }}
+          >
+            <div dir="auto" className="px-3 py-1.5 text-xs text-slate-500 truncate border-b border-slate-200 dark:border-slate-700 mb-1">
+              {ctxMenu.name}
+            </div>
+            <button onClick={() => { navigate_to(ctxMenu.path); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+              <FolderOpen size={15} /> Open
+            </button>
+            <button onClick={() => { navigate_to(ctxMenu.path); setModal({ type: 'upload' }); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+              <Upload size={15} /> Upload here
+            </button>
+            <button onClick={() => { ctxNewSubfolder(ctxMenu.path); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+              <FolderPlus size={15} /> New subfolder
+            </button>
+            <button onClick={() => { ctxShareFolder(ctxMenu.path); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+              <LinkIcon size={15} /> Share folder
+            </button>
+            <button onClick={() => { ctxRename(ctxMenu.path, ctxMenu.name); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+              <Pencil size={15} /> Rename
+            </button>
+            <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+            <button onClick={() => { ctxDeleteFolder(ctxMenu.path, ctxMenu.name); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-red-600 dark:text-red-400">
+              <Trash2 size={15} /> Delete
+            </button>
+          </div>
+        </>
       )}
 
       <ToastContainer />

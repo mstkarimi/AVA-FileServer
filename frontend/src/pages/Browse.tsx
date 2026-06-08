@@ -216,7 +216,6 @@ export default function Browse() {
                 {entries.map(e => (
                   <tr
                     key={e.name}
-                    onDoubleClick={() => openEntry(e)}
                     className="border-b border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800/50"
                   >
                     <td className="px-4 py-2.5">

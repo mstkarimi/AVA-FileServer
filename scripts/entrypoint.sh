@@ -9,7 +9,7 @@ fi
 echo "${SFTP_USERNAME}:${SFTP_PASSWORD}" | chpasswd
 
 # --- Filesystem layout -------------------------------------------------------
-mkdir -p /data/files /data/db /data/files/.tmp /data/certs /data/branding
+mkdir -p /data/files /data/db /data/files/.tmp /data/certs /data/branding /data/trash
 
 # --- /data/files (chroot top) ---------------------------------------------
 # OpenSSH chroot requires this dir to be root-owned and NOT group/world

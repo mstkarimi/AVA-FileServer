@@ -194,6 +194,7 @@ function handleShare(req: Request, res: Response): void {
   if (m) {
     const share = getShareByHash(m[1]!);
     if (!share) { res.status(404).end(); return; }
+    if (share.revoked_at) { res.status(410).end(); return; }  // Gone — link revoked
 
     if (share.share_type === 'file') {
       streamFileShare(share, req, res);
@@ -222,6 +223,7 @@ function handleShare(req: Request, res: Response): void {
       res.status(404).end();
       return;
     }
+    if (share.revoked_at) { res.status(410).end(); return; }  // Gone — link revoked
 
     const folderRoot = path.resolve(config.filesRoot, share.file_path);
     try {
