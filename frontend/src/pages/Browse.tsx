@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LogOut, RefreshCw, Folder, Eye, Download, Link2, PanelLeft, Upload,
   Music, Video, Image as ImageIcon, FileText, File as FileIcon,
+  ChevronUp, ChevronDown,
 } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
@@ -22,6 +23,12 @@ function formatSize(bytes: number): string {
 
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString();
+}
+
+type SortKey = 'name' | 'size' | 'modified';
+
+function isModifiedClick(e: MouseEvent): boolean {
+  return e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
 }
 
 function fileIcon(entry: FileEntry) {
@@ -51,6 +58,27 @@ export default function Browse() {
   const [previewing, setPreviewing] = useState<{ path: string; name: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortAsc, setSortAsc] = useState(true);
+
+  function toggleSort(k: SortKey) {
+    if (sortKey === k) setSortAsc(a => !a);
+    else { setSortKey(k); setSortAsc(true); }
+  }
+
+  const sorted = [...entries].sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+    let cmp = 0;
+    if (sortKey === 'name') cmp = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    else if (sortKey === 'size') cmp = a.size - b.size;
+    else cmp = a.modified - b.modified;
+    return sortAsc ? cmp : -cmp;
+  });
+
+  function folderHref(e: FileEntry): string {
+    const full = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`;
+    return `/browse?${new URLSearchParams({ path: full }).toString()}`;
+  }
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
@@ -217,31 +245,64 @@ export default function Browse() {
             <table className="w-full">
               <thead>
                 <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-slate-200 dark:border-slate-700">
-                  <th className="text-left px-4 py-2 font-medium">Name</th>
-                  <th className="text-right px-4 py-2 font-medium w-32">Size</th>
-                  <th className="text-right px-4 py-2 font-medium w-32">Modified</th>
+                  <th className="px-2 py-2 font-medium w-12 text-left">
+                    <button onClick={() => toggleSort('name')} title="Row number — sort by natural order" className="hover:text-slate-900 dark:hover:text-slate-200">#</button>
+                  </th>
+                  <th className="text-left px-2 py-2 font-medium">
+                    <button onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200">
+                      Name {sortKey === 'name' ? (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null}
+                    </button>
+                  </th>
+                  <th className="text-right px-4 py-2 font-medium w-32">
+                    <button onClick={() => toggleSort('size')} className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200">
+                      {sortKey === 'size' ? (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null} Size
+                    </button>
+                  </th>
+                  <th className="text-right px-4 py-2 font-medium w-32">
+                    <button onClick={() => toggleSort('modified')} className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200">
+                      {sortKey === 'modified' ? (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null} Modified
+                    </button>
+                  </th>
                   <th className="px-4 py-2 w-44"></th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map(e => (
+                {sorted.map((e, idx) => (
                   <tr
                     key={e.name}
                     className="border-b border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800/50"
                   >
-                    <td className="px-4 py-2.5">
-                      <button
-                        onClick={() => openEntry(e)}
-                        className="group flex items-center gap-2 text-left w-full"
-                      >
-                        {fileIcon(e)}
-                        <span dir="auto" className="text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">{e.name}</span>
-                        {e.shareUrl && (
-                          <span title="Has a public share link" className="ml-1 shrink-0 text-blue-500 dark:text-blue-400">
-                            <Link2 size={12} />
-                          </span>
-                        )}
-                      </button>
+                    <td className="px-2 py-2.5 text-xs text-slate-400 tabular-nums">{idx + 1}</td>
+                    <td className="px-2 py-2.5">
+                      {e.type === 'dir' ? (
+                        <a
+                          href={folderHref(e)}
+                          onClick={ev => { if (isModifiedClick(ev)) return; ev.preventDefault(); openEntry(e); }}
+                          title="Open · Ctrl/⌘-click to open in a new tab"
+                          className="group flex items-center gap-2 text-left w-full"
+                        >
+                          {fileIcon(e)}
+                          <span dir="auto" className="text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:underline">{e.name}</span>
+                          {e.shareUrl && (
+                            <span title="Has a public share link" className="ml-1 shrink-0 text-blue-500 dark:text-blue-400">
+                              <Link2 size={12} />
+                            </span>
+                          )}
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => preview(e)}
+                          className="group flex items-center gap-2 text-left w-full"
+                        >
+                          {fileIcon(e)}
+                          <span dir="auto" className="text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">{e.name}</span>
+                          {e.shareUrl && (
+                            <span title="Has a public share link" className="ml-1 shrink-0 text-blue-500 dark:text-blue-400">
+                              <Link2 size={12} />
+                            </span>
+                          )}
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-right text-xs text-slate-500 tabular-nums">
                       {e.type === 'file' ? formatSize(e.size) : ''}

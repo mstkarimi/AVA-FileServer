@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LogOut, Upload, FolderPlus, RefreshCw, PanelLeft, Share2, Users, Link2,
-  FolderOpen, Pencil, Trash2, Link as LinkIcon,
+  FolderOpen, Pencil, Trash2, Link as LinkIcon, ExternalLink,
 } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
@@ -14,6 +14,7 @@ import ShareManager from '../components/ShareManager';
 import UsersTab from '../components/UsersTab';
 import TrashTab from '../components/TrashTab';
 import BulkShareModal from '../components/BulkShareModal';
+import MoveDialog from '../components/MoveDialog';
 import SearchBar from '../components/SearchBar';
 import Brand from '../components/Brand';
 import ThemeToggle from '../components/ThemeToggle';
@@ -39,6 +40,7 @@ export default function Admin() {
   const [modal, setModal] = useState<Modal | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [bulkShareOpen, setBulkShareOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showInput, setShowInput] = useState<'rename' | 'mkdir' | 'move' | null>(null);
   const [pendingEntry, setPendingEntry] = useState<FileEntry | null>(null);
@@ -106,38 +108,60 @@ export default function Admin() {
     });
   }
 
-  // ── Item 15: drag-and-drop move ──────────────────────────────────────────
-  async function doMove(from: string, to: string, destLabel: string) {
-    if (from === to) return;
-    // Guard: can't move a folder into itself / its own descendant
-    if (to.startsWith(from + '/')) {
-      toast("Can't move a folder into itself", 'error');
-      return;
+  // Absolute URL for opening a folder/file in a new browser tab (item 1).
+  function hrefFor(entry: FileEntry): string {
+    const full = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
+    if (entry.type === 'dir') {
+      const sp = new URLSearchParams({ path: full, tab: 'files' });
+      return `/admin?${sp.toString()}`;
     }
-    try {
-      await api.post('/files/move', { from, to });
-      toast(`Moved into ${destLabel}`, 'success');
-      load();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Move failed (target may already exist)';
-      toast(msg, 'error');
+    const token = localStorage.getItem('token') || '';
+    return `/api/preview?path=${encodeURIComponent(full)}&t=${encodeURIComponent(token)}`;
+  }
+
+  // ── Move (items 2 + 15): single drag, multi-select drag, and bulk dialog ──
+  // When the dragged item is part of a multi-selection, move the whole selection.
+  function resolveSources(draggedName: string): string[] {
+    return selected.has(draggedName) && selected.size > 1 ? [...selected] : [draggedName];
+  }
+
+  async function moveManyInto(sources: string[], destAbs: string, destLabel: string) {
+    let ok = 0;
+    let skipped = 0;
+    for (const name of sources) {
+      const from = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`;
+      const to = destAbs === '/' ? `/${name}` : `${destAbs}/${name}`;
+      if (from === to) { skipped++; continue; }            // already there
+      if (to.startsWith(from + '/')) { skipped++; continue; } // into itself/descendant
+      try {
+        await api.post('/files/move', { from, to });
+        ok++;
+      } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'target may already exist';
+        toast(`Couldn't move "${name}": ${msg}`, 'error');
+      }
     }
+    if (ok) toast(`Moved ${ok} item${ok === 1 ? '' : 's'} into ${destLabel}`, 'success');
+    else if (skipped && !ok) toast('Nothing to move there', 'info');
+    setSelected(new Set());
+    load();
   }
 
   // Drop a listing item onto a folder row in the same listing
   function moveInto(sourceName: string, destFolderName: string) {
-    const base = currentPath === '/' ? '' : currentPath;
-    const from = `${base}/${sourceName}`;
-    const to = `${base}/${destFolderName}/${sourceName}`;
-    doMove(from, to, destFolderName);
+    const destAbs = currentPath === '/' ? `/${destFolderName}` : `${currentPath}/${destFolderName}`;
+    moveManyInto(resolveSources(sourceName), destAbs, destFolderName);
   }
 
   // Drop a listing item onto any folder in the sidebar tree (destPath has leading slash)
   function moveToPath(sourceName: string, destPath: string) {
-    const base = currentPath === '/' ? '' : currentPath;
-    const from = `${base}/${sourceName}`;
-    const to = `${destPath}/${sourceName}`;
-    doMove(from, to, destPath.split('/').pop() || destPath);
+    moveManyInto(resolveSources(sourceName), destPath, destPath.split('/').pop() || 'root');
+  }
+
+  // Bulk "Move…" dialog confirm — move all selected into the chosen folder.
+  function moveSelectedTo(destPath: string) {
+    setMoveOpen(false);
+    moveManyInto([...selected], destPath, destPath.split('/').pop() || 'root');
   }
 
   // ── Context-menu actions (operate on an explicit folder path, leading slash) ──
@@ -375,6 +399,25 @@ export default function Admin() {
         </button>
       </div>
 
+      {/* Item 4: dedicated breadcrumb bar on small/medium screens, where the inline
+          header breadcrumb is hidden (it competes with the search box). */}
+      {tab === 'files' && (
+        <nav aria-label="Breadcrumb" className="lg:hidden flex items-center gap-1 px-4 py-2 bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-sm shrink-0 overflow-x-auto whitespace-nowrap">
+          <button onClick={() => navigate_to('/')} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white shrink-0">/ root</button>
+          {breadcrumbs.map((seg, i) => {
+            const path = '/' + breadcrumbs.slice(0, i + 1).join('/');
+            return (
+              <span key={path} className="flex items-center gap-1 shrink-0">
+                <span className="text-slate-400 dark:text-slate-600">/</span>
+                <button onClick={() => navigate_to(path)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white truncate max-w-[160px]" dir="auto">
+                  {seg}
+                </button>
+              </span>
+            );
+          })}
+        </nav>
+      )}
+
       {tab === 'shares' ? (
         <div className="flex-1 overflow-y-auto">
           <ShareManager />
@@ -446,6 +489,8 @@ export default function Admin() {
               onSelect={toggleSelect}
               onSelectAll={selectAll}
               onMoveInto={moveInto}
+              onMoveSelected={() => setMoveOpen(true)}
+              hrefFor={hrefFor}
               onOpen={openEntry}
               onPreview={entry => setModal({ type: 'preview', entry })}
               onShare={entry => setModal({ type: 'share', entry })}
@@ -494,6 +539,15 @@ export default function Admin() {
         />
       )}
 
+      {moveOpen && (
+        <MoveDialog
+          count={selected.size}
+          currentPath={currentPath}
+          onClose={() => setMoveOpen(false)}
+          onConfirm={moveSelectedTo}
+        />
+      )}
+
       {/* Item 13: custom context menu for sidebar folders */}
       {ctxMenu && (
         <>
@@ -507,6 +561,9 @@ export default function Admin() {
             </div>
             <button onClick={() => { navigate_to(ctxMenu.path); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
               <FolderOpen size={15} /> Open
+            </button>
+            <button onClick={() => { const sp = new URLSearchParams({ path: ctxMenu.path, tab: 'files' }); window.open(`/admin?${sp.toString()}`, '_blank', 'noopener'); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+              <ExternalLink size={15} /> Open in new tab
             </button>
             <button onClick={() => { navigate_to(ctxMenu.path); setModal({ type: 'upload' }); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
               <Upload size={15} /> Upload here

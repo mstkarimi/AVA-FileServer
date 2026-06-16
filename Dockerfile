@@ -15,7 +15,13 @@ WORKDIR /build
 COPY backend/package*.json ./
 RUN npm install
 COPY backend/ ./
-RUN npm run build && npm prune --production
+# Compile TS, then slim node_modules. `npm prune` is run offline with a hard
+# timeout and made non-fatal: in restricted-network environments it can otherwise
+# block indefinitely contacting the registry. If it can't run, we ship the
+# (slightly larger) full node_modules rather than failing the build.
+RUN npm run build \
+    && (timeout 120 npm prune --production --offline 2>/dev/null \
+        || echo "[build] npm prune skipped (offline/timeout) — keeping full node_modules")
 
 # Stage 3: runtime
 FROM node:20-bookworm-slim

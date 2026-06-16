@@ -28,7 +28,8 @@ export function listDir(dirPath: string): FileEntry[] {
     })
     .sort((a, b) => {
       if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
-      return a.name.localeCompare(b.name);
+      // Natural/numeric order so "2" sorts before "10" (not lexicographic 1,10,2).
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
     });
 }
 

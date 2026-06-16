@@ -1,0 +1,14 @@
+# Keep the Docker build context tiny & fast. Without this, the 54GB runtime
+# data volume (./data/files) gets pulled into the build context — which fills
+# the disk on the legacy builder and slows context hashing on BuildKit.
+data/
+**/node_modules
+.git
+.gitignore
+certs/
+*.log
+npm-debug.log*
+backend/dist/
+frontend/dist/
+.DS_Store
+scripts/_*
