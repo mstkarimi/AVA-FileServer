@@ -9,11 +9,20 @@ import { Role } from '../services/permissionService';
 
 const router = Router();
 
+// Brute-force throttle. Keyed on the real client IP (app sets `trust proxy`).
+// IMPORTANT: an entire office often shares ONE public NAT IP, so the bucket is
+// effectively per-site, not per-user. Two safeguards keep that from locking a
+// whole team out during a burst of fresh logins (e.g. onboarding a new domain):
+//   - skipSuccessfulRequests: a correct login does NOT consume the bucket, so
+//     any number of legitimate users can sign in without exhausting it.
+//   - a roomier max: only FAILED attempts count, and 20 wrong tries / 15 min
+//     from a single IP still throttles real brute-forcing.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   message: { error: 'Too many login attempts', code: 'RATE_LIMITED' },
 });
 
