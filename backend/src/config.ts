@@ -19,4 +19,11 @@ export const config = {
   uploadMaxBytes: 100 * 1024 * 1024, // 100 MB
   // Item 14: how long deleted items stay recoverable in the trash
   trashRetentionDays: parseInt(process.env['TRASH_RETENTION_DAYS'] || '30', 10),
+  // Item 4: download/bandwidth abuse guards (see services/downloadGuard.ts).
+  // Per-IP concurrent stream cap — generous on purpose because the whole office
+  // shares one NAT IP; it only blocks extreme parallel-connection abuse.
+  downloadMaxConcurrentPerIp: parseInt(process.env['DOWNLOAD_MAX_CONCURRENT_PER_IP'] || '20', 10),
+  // Per-connection speed ceiling in MB/s. 0 = unlimited (disabled). Enable once
+  // a sane per-link speed for this server's uplink is chosen.
+  downloadRateLimitMbps: parseFloat(process.env['DOWNLOAD_RATE_LIMIT_MBPS'] || '0'),
 } as const;

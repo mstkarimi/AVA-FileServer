@@ -80,8 +80,10 @@ function renderFolderIndex(
 
   const dirs = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'));
   const files = entries.filter(e => e.isFile() && !e.name.startsWith('.'));
-  dirs.sort((a, b) => a.name.localeCompare(b.name));
-  files.sort((a, b) => a.name.localeCompare(b.name));
+  // Natural/numeric sort so "1.2" comes before "1.10" (matches the logged-in UI).
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  dirs.sort((a, b) => collator.compare(a.name, b.name));
+  files.sort((a, b) => collator.compare(a.name, b.name));
 
   const breadcrumbs: { name: string; href: string }[] = [
     { name: path.basename(share.file_path) || 'root', href: `/${share.hash}/` },
@@ -103,13 +105,13 @@ function renderFolderIndex(
     const up = parts.length === 0
       ? `/${share.hash}/`
       : `/${share.hash}/${parts.map(encodeURIComponent).join('/')}/`;
-    rows.push(`<tr><td><a href="${escapeHtml(up)}">📁 ../</a></td><td></td><td></td></tr>`);
+    rows.push(`<tr><td class="cb"></td><td><a href="${escapeHtml(up)}">📁 ../</a></td><td></td><td></td></tr>`);
   }
 
   for (const d of dirs) {
     const href = encodeURIComponent(d.name) + '/';
     rows.push(
-      `<tr><td><a href="${escapeHtml(href)}">📁 ${escapeHtml(d.name)}/</a></td><td></td><td></td></tr>`
+      `<tr><td class="cb"></td><td><a href="${escapeHtml(href)}">📁 ${escapeHtml(d.name)}/</a></td><td></td><td></td></tr>`
     );
   }
 
@@ -120,7 +122,9 @@ function renderFolderIndex(
     const href = encodeURIComponent(f.name);
     const date = mtime ? new Date(mtime).toISOString().slice(0, 16).replace('T', ' ') : '';
     rows.push(
-      `<tr><td><a href="${escapeHtml(href)}" dir="auto">📄 ${escapeHtml(f.name)}</a></td>` +
+      `<tr>` +
+      `<td class="cb"><input type="checkbox" class="sel" data-name="${escapeHtml(f.name)}" data-href="${escapeHtml(href)}" aria-label="Select ${escapeHtml(f.name)}"></td>` +
+      `<td><a href="${escapeHtml(href)}" dir="auto">📄 ${escapeHtml(f.name)}</a></td>` +
       `<td class="num">${fmtSize(size)}</td><td class="date">${escapeHtml(date)}</td></tr>`
     );
   }
@@ -162,16 +166,72 @@ a { color: #0066cc; text-decoration: none; }
 a:hover { text-decoration: underline; }
 tbody tr:hover { background: rgba(127,127,127,0.06); }
 footer { margin-top: 2rem; font-size: 0.8rem; color: #999; text-align: center; }
+.cb { width: 2.4rem; text-align: center; padding-left: 0.4rem; padding-right: 0.4rem; }
+.cb input { width: 16px; height: 16px; cursor: pointer; vertical-align: middle; }
+#bulkbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 1rem; display: flex; align-items: center; gap: 0.75rem; background: #fff; color: #222; border: 1px solid #ddd; box-shadow: 0 4px 20px rgba(0,0,0,0.18); border-radius: 10px; padding: 0.55rem 1rem; font-size: 0.9rem; z-index: 10; max-width: calc(100vw - 2rem); }
+#bulkbar button { background: #0066cc; color: #fff; border: 0; border-radius: 7px; padding: 0.45rem 0.9rem; font-size: 0.88rem; cursor: pointer; white-space: nowrap; }
+#bulkbar button:hover { background: #0055aa; }
+#bulkbar button:disabled { opacity: 0.6; cursor: default; }
+#bulkcount { font-weight: 500; white-space: nowrap; }
+#dlstatus { color: #888; font-size: 0.82rem; }
+@media (prefers-color-scheme: dark) {
+  #bulkbar { background: #2a2a2a; color: #ddd; border-color: #444; }
+}
 </style>
 </head>
 <body>
 <h1>Index</h1>
 <div class="crumbs">${breadcrumbsHtml}</div>
 <table>
-<thead><tr><th>Name</th><th class="num">Size</th><th class="date">Modified</th></tr></thead>
+<thead><tr><th class="cb">${files.length ? '<input type="checkbox" id="selall" aria-label="Select all files">' : ''}</th><th>Name</th><th class="num">Size</th><th class="date">Modified</th></tr></thead>
 <tbody>${rows.join('\n')}</tbody>
 </table>
 <footer>Shared folder · ${dirs.length} folder${dirs.length === 1 ? '' : 's'}, ${files.length} file${files.length === 1 ? '' : 's'}</footer>
+<div id="bulkbar" hidden role="region" aria-label="Download selected files">
+  <span id="bulkcount">0 selected</span>
+  <button id="dlbtn" type="button">⬇ Download selected</button>
+  <span id="dlstatus" aria-live="polite"></span>
+</div>
+<script>
+(function(){
+  var selall = document.getElementById('selall');
+  var bar = document.getElementById('bulkbar');
+  var count = document.getElementById('bulkcount');
+  var btn = document.getElementById('dlbtn');
+  var status = document.getElementById('dlstatus');
+  function boxes(){ return [].slice.call(document.querySelectorAll('.sel')); }
+  function checked(){ return boxes().filter(function(b){ return b.checked; }); }
+  function refresh(){
+    var n = checked().length;
+    count.textContent = n + (n === 1 ? ' file selected' : ' files selected');
+    bar.hidden = n === 0;
+    if (selall){ var all = boxes(); selall.checked = n > 0 && n === all.length; selall.indeterminate = n > 0 && n < all.length; }
+  }
+  boxes().forEach(function(b){ b.addEventListener('change', refresh); });
+  if (selall) selall.addEventListener('change', function(){ boxes().forEach(function(b){ b.checked = selall.checked; }); refresh(); });
+  btn.addEventListener('click', function(){
+    var items = checked();
+    if (!items.length) return;
+    btn.disabled = true;
+    var i = 0;
+    // Sequential, spaced downloads: lightest on the server (reuses the normal
+    // range-capable file stream, no zip/CPU) and stays under the per-IP
+    // concurrent-download cap. The 800ms gap lets the browser register each
+    // download instead of dropping rapid-fire ones.
+    function next(){
+      if (i >= items.length){ status.textContent = 'Started ' + items.length + ' download(s) ✓'; btn.disabled = false; return; }
+      var b = items[i++];
+      var a = document.createElement('a');
+      a.href = b.dataset.href; a.download = b.dataset.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      status.textContent = 'Downloading ' + i + ' / ' + items.length + '…';
+      setTimeout(next, 800);
+    }
+    next();
+  });
+  refresh();
+})();
+</script>
 </body>
 </html>`;
 

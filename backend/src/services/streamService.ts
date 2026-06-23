@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { Request, Response } from 'express';
 import { getMimeType } from '../utils/mime';
+import { clientIp, acquireSlot, releaseSlot, ThrottleStream, rateBytesPerSec } from './downloadGuard';
 
 interface RangeParsed {
   start: number;
@@ -88,6 +89,34 @@ export function streamFile(
 
   const isHead = req.method === 'HEAD';
 
+  // ── Abuse guards (item 4) ────────────────────────────────────────────────
+  // A slot is reserved only for actual GET bodies (never HEAD / 304 / 416) and
+  // released exactly once when the connection closes (normal finish OR abort).
+  const ip = clientIp(req);
+  let released = false;
+  const release = (): void => {
+    if (!released) { released = true; releaseSlot(ip); }
+  };
+
+  function pipeBody(readable: fs.ReadStream): void {
+    res.on('close', release);
+    readable.on('error', () => { release(); res.end(); });
+    const rate = rateBytesPerSec();
+    if (rate > 0) {
+      const throttle = new ThrottleStream(rate);
+      throttle.on('error', () => { release(); readable.destroy(); res.end(); });
+      readable.pipe(throttle).pipe(res);
+    } else {
+      readable.pipe(res);
+    }
+  }
+
+  function rejectBusy(): void {
+    // At the per-IP concurrent-stream cap — ask the client to back off briefly.
+    res.setHeader('Retry-After', '5');
+    res.status(429).end();
+  }
+
   if (rangeHeader) {
     const parsed = parseRange(rangeHeader, fileSize);
 
@@ -100,30 +129,29 @@ export function streamFile(
     const { start, end } = parsed as RangeParsed;
     const chunkSize = end - start + 1;
 
-    res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-    res.setHeader('Content-Length', chunkSize);
-    res.status(206);
-
     if (isHead) {
-      res.end();
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', chunkSize);
+      res.status(206).end();
       return;
     }
 
-    const stream = fs.createReadStream(filePath, { start, end });
-    stream.pipe(res);
-    stream.on('error', () => res.end());
+    if (!acquireSlot(ip)) { rejectBusy(); return; }
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+    res.setHeader('Content-Length', chunkSize);
+    res.status(206);
+    pipeBody(fs.createReadStream(filePath, { start, end }));
     return;
   }
-
-  res.setHeader('Content-Length', fileSize);
-  res.status(200);
 
   if (isHead) {
-    res.end();
+    res.setHeader('Content-Length', fileSize);
+    res.status(200).end();
     return;
   }
 
-  const stream = fs.createReadStream(filePath);
-  stream.pipe(res);
-  stream.on('error', () => res.end());
+  if (!acquireSlot(ip)) { rejectBusy(); return; }
+  res.setHeader('Content-Length', fileSize);
+  res.status(200);
+  pipeBody(fs.createReadStream(filePath));
 }
