@@ -2,7 +2,10 @@ import { Router, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
-import { createShare, listShares, deleteShare, revokeShare, unrevokeShare, shareUrl, ShareType } from '../services/shareService';
+import {
+  createShare, listShares, deleteShare, revokeShare, unrevokeShare, shareUrl, ShareType,
+  revokeShares, unrevokeShares, deleteShares,
+} from '../services/shareService';
 import { safePath } from '../utils/safePath';
 import { config } from '../config';
 import { userCanAccess } from '../services/permissionService';
@@ -192,6 +195,39 @@ router.get('/', requireAdmin, (_req: AuthRequest, res: Response): void => {
     createdBy: s.created_by_username,
   }));
   res.json(shares);
+});
+
+// ── Bulk admin operations over a selection of share ids ────────────────────
+// One transaction each (see shareService), so revoking/deleting a big selection
+// is a single fast write. Mounted BEFORE the '/:id/...' routes so "bulk" is
+// never parsed as an id.
+function parseIds(req: AuthRequest, res: Response): number[] | null {
+  const { ids } = req.body as { ids?: unknown };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: 'ids required', code: 'MISSING_FIELDS' });
+    return null;
+  }
+  const clean = ids.map(Number).filter(n => Number.isInteger(n) && n > 0);
+  if (clean.length === 0) {
+    res.status(400).json({ error: 'no valid ids', code: 'INVALID_ID' });
+    return null;
+  }
+  return clean;
+}
+
+router.post('/bulk/revoke', requireAdmin, (req: AuthRequest, res: Response): void => {
+  const ids = parseIds(req, res); if (!ids) return;
+  res.json({ changed: revokeShares(ids) });
+});
+
+router.post('/bulk/unrevoke', requireAdmin, (req: AuthRequest, res: Response): void => {
+  const ids = parseIds(req, res); if (!ids) return;
+  res.json({ changed: unrevokeShares(ids) });
+});
+
+router.post('/bulk/delete', requireAdmin, (req: AuthRequest, res: Response): void => {
+  const ids = parseIds(req, res); if (!ids) return;
+  res.json({ changed: deleteShares(ids) });
 });
 
 // Soft-revoke a share (link stops working, row kept for audit/stats)

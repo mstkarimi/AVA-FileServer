@@ -107,6 +107,48 @@ export function unrevokeShare(id: number): boolean {
     .run(id).changes > 0;
 }
 
+/**
+ * Bulk variants for the admin Manage Shares page. Each runs inside one
+ * better-sqlite3 transaction so revoking/deleting a large selection is a single
+ * fast, atomic write rather than N round-trips. Returns how many rows changed.
+ */
+export function revokeShares(ids: number[]): number {
+  if (ids.length === 0) return 0;
+  const db = getDb();
+  const stmt = db.prepare('UPDATE shares SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL');
+  const now = Date.now();
+  const tx = db.transaction((list: number[]) => {
+    let n = 0;
+    for (const id of list) n += stmt.run(now, id).changes;
+    return n;
+  });
+  return tx(ids);
+}
+
+export function unrevokeShares(ids: number[]): number {
+  if (ids.length === 0) return 0;
+  const db = getDb();
+  const stmt = db.prepare('UPDATE shares SET revoked_at = NULL WHERE id = ? AND revoked_at IS NOT NULL');
+  const tx = db.transaction((list: number[]) => {
+    let n = 0;
+    for (const id of list) n += stmt.run(id).changes;
+    return n;
+  });
+  return tx(ids);
+}
+
+export function deleteShares(ids: number[]): number {
+  if (ids.length === 0) return 0;
+  const db = getDb();
+  const stmt = db.prepare('DELETE FROM shares WHERE id = ?');
+  const tx = db.transaction((list: number[]) => {
+    let n = 0;
+    for (const id of list) n += stmt.run(id).changes;
+    return n;
+  });
+  return tx(ids);
+}
+
 export function incrementDownload(id: number): void {
   getDb()
     .prepare(
