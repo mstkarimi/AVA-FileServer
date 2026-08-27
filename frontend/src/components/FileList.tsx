@@ -167,19 +167,21 @@ export default function FileList(props: Props) {
    * remount it — and RowMenu's open state would be destroyed the instant the
    * menu button set state, making the row menu impossible to open.
    */
-  function quickActions(entry: FileEntry, compact?: boolean) {
+  function quickActions(entry: FileEntry, dense?: boolean) {
     const href = hrefFor?.(entry);
     const isDir = entry.type === 'dir';
-    const btn = 'p-1.5 rounded-lg text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors';
+    const btn = 'p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors';
     return (
       <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-        {!isDir && !compact && (
+        {!isDir && (
           <button onClick={() => onPreview(entry)} title="Preview" aria-label={`Preview ${entry.name}`}
             className={`${btn} hover:text-blue-600 dark:hover:text-blue-400`}>
             <Eye size={15} />
           </button>
         )}
-        {!isDir && href && !compact && (
+        {/* Download is the one icon dropped in the narrow modes — a gallery tile
+            is only ~150px wide. It stays available in the overflow menu. */}
+        {!isDir && href && !dense && (
           <button onClick={() => triggerDownload(href, entry.name)} title="Download" aria-label={`Download ${entry.name}`}
             className={`${btn} hover:text-emerald-600 dark:hover:text-emerald-400`}>
             <Download size={15} />
@@ -190,7 +192,7 @@ export default function FileList(props: Props) {
             className={`${btn} text-blue-500 hover:text-blue-600 dark:text-blue-400`}>
             <Link2 size={15} />
           </button>
-        ) : onShare && !compact ? (
+        ) : onShare ? (
           <button onClick={() => onShare(entry)} title="Create share link" aria-label={`Share ${entry.name}`}
             className={`${btn} hover:text-blue-600 dark:hover:text-blue-400`}>
             <Share2 size={15} />
@@ -315,8 +317,25 @@ export default function FileList(props: Props) {
     );
   }
 
+  // pointer-events is toggled alongside opacity: an `opacity-0` button is still
+  // clickable, so without this a stray click in the actions column would fire an
+  // invisible action.
   const hoverActions =
-    'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-lg:opacity-100 transition-opacity';
+    'opacity-0 pointer-events-none transition-opacity ' +
+    'group-hover:opacity-100 group-hover:pointer-events-auto ' +
+    'group-focus-within:opacity-100 group-focus-within:pointer-events-auto ' +
+    'max-lg:opacity-100 max-lg:pointer-events-auto';
+
+  /**
+   * When to reveal an entry's action icons. Hover alone is not enough: a
+   * SELECTED entry keeps its actions on screen, so the things you can do to an
+   * item live on the item itself rather than only in a bar at the top of the
+   * list. An open menu also pins them, or the strip would vanish under the
+   * pointer as soon as the menu took focus.
+   */
+  function actionsVisible(entry: FileEntry): string {
+    return menuRow === entry.name || sel.has(entry.name) ? '' : hoverActions;
+  }
 
   // ─────────────────────────────── Toolbar ─────────────────────────────────
   const sortLabel: Record<SortKey, string> = { name: 'Name', size: 'Size', modified: 'Modified' };
@@ -426,7 +445,7 @@ export default function FileList(props: Props) {
         <span className="hidden md:block text-xs text-slate-500 dark:text-slate-400 tabular-nums" title={relativeDate(entry.modified)}>
           {formatDate(entry.modified)}
         </span>
-        <div className={menuRow === entry.name ? '' : hoverActions}>
+        <div className={actionsVisible(entry)}>
           {quickActions(entry)}
         </div>
       </div>
@@ -445,7 +464,7 @@ export default function FileList(props: Props) {
         {selectBox(entry)}
         <EntryIcon entry={entry} size={VIEW_EDGE.list} />
         {entryName(entry, "text-sm text-slate-800 dark:text-slate-100 flex-1")}
-        <div className={`shrink-0 ${menuRow === entry.name ? '' : hoverActions}`}>
+        <div className={`shrink-0 ${actionsVisible(entry)}`}>
           {quickActions(entry, true)}
         </div>
       </div>
@@ -482,7 +501,7 @@ export default function FileList(props: Props) {
             {entry.shareUrl && <Link2 size={11} className="text-blue-500 dark:text-blue-400 shrink-0" />}
           </div>
         </div>
-        <div className={`shrink-0 ${menuRow === entry.name ? '' : hoverActions}`}>
+        <div className={`shrink-0 ${actionsVisible(entry)}`}>
           {quickActions(entry, true)}
         </div>
       </div>
@@ -501,10 +520,15 @@ export default function FileList(props: Props) {
           transition-all ${cardSurface(entry)} ${stateClasses(entry)}`}
       >
         {selectBox(entry, `absolute top-2 left-2 z-10 ${sel.has(entry.name) ? '' : hoverActions}`)}
-        <div className={`absolute top-1.5 right-1.5 z-10 ${menuRow === entry.name ? '' : hoverActions}`}>
-          <div className="rounded-lg bg-white/85 backdrop-blur-sm dark:bg-slate-900/80">
-            {quickActions(entry, true)}
-          </div>
+        {/* NO backdrop-filter here. `backdrop-filter` (like `transform`) makes an
+            element a containing block for `position: fixed` descendants, which
+            re-anchored RowMenu's fixed menu to this 100px overlay and let the
+            card's `overflow-hidden` clip it — the menu opened invisibly, which
+            read as "the three-dot button does nothing". A solid translucent
+            background gives the same legibility with no containing block. */}
+        <div className={`absolute top-1.5 right-1.5 z-10 rounded-lg bg-white/90 dark:bg-slate-900/90
+          ${actionsVisible(entry)}`}>
+          {quickActions(entry, true)}
         </div>
 
         <div className={`w-full aspect-square flex items-center justify-center ${KIND_TINT[kind]}`}>
