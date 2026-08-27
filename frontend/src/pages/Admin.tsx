@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  LogOut, Upload, FolderPlus, RefreshCw, PanelLeft, Share2, Users, Link2,
+  LogOut, Upload, FolderPlus, RefreshCw, PanelLeft, Share2, Users,
   FolderOpen, Pencil, Trash2, Link as LinkIcon, ExternalLink,
 } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
@@ -19,6 +19,7 @@ import SearchBar from '../components/SearchBar';
 import Brand from '../components/Brand';
 import ThemeToggle from '../components/ThemeToggle';
 import { ToastContainer, toast } from '../components/Toast';
+import { ViewMode, loadViewMode, saveViewMode } from '../lib/viewModes';
 
 type Modal =
   | { type: 'upload' }
@@ -36,9 +37,13 @@ export default function Admin() {
   const tab = (searchParams.get('tab') as 'files' | 'shares' | 'users' | 'trash') || 'files';
 
   const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<Modal | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Closed by default on narrow screens: a 224px tree out of a 375px phone left
+  // almost nothing for the listing itself.
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window === 'undefined' ? true : window.innerWidth >= 1024);
   const [bulkShareOpen, setBulkShareOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -46,14 +51,24 @@ export default function Admin() {
   const [pendingEntry, setPendingEntry] = useState<FileEntry | null>(null);
   // Item 13: custom right-click context menu on sidebar folders
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; name: string } | null>(null);
+  // Switchable listing layout, remembered across sessions.
+  const [viewMode, setViewMode] = useState<ViewMode>(() => loadViewMode('details'));
+
+  function changeViewMode(m: ViewMode) {
+    setViewMode(m);
+    saveViewMode(m);
+  }
 
   const load = useCallback(async (path = currentPath) => {
+    setLoading(true);
     try {
       const res = await api.get('/files', { params: { path } });
       setEntries(res.data);
       setSelected(new Set());
     } catch {
       toast('Failed to load directory', 'error');
+    } finally {
+      setLoading(false);
     }
   }, [currentPath]);
 
@@ -296,6 +311,14 @@ export default function Admin() {
 
   const breadcrumbs = currentPath.split('/').filter(Boolean);
 
+  // Files of the current folder, so the preview modal can step prev/next.
+  const previewSiblings = useMemo(
+    () => entries
+      .filter(e => e.type === 'file')
+      .map(e => ({ path: currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`, name: e.name })),
+    [entries, currentPath]
+  );
+
   return (
     <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
       {/* Top bar */}
@@ -336,15 +359,9 @@ export default function Admin() {
         </div>
 
         <div className="flex items-center gap-2">
-          {selected.size > 0 && tab === 'files' && (
-            <button
-              onClick={() => setBulkShareOpen(true)}
-              className="flex items-center gap-1.5 text-sm bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg transition-colors"
-              title={`Generate share links for ${selected.size} item(s)`}
-            >
-              <Link2 size={15} /> Bulk Share ({selected.size})
-            </button>
-          )}
+          {/* Bulk actions now live in the selection bar directly above the
+              listing, next to the selection they act on, instead of appearing
+              and disappearing in the header. */}
           {tab === 'files' && (
             <>
               <button
@@ -485,11 +502,16 @@ export default function Admin() {
 
             <FileList
               entries={entries}
+              currentPath={currentPath}
+              mode={viewMode}
+              onModeChange={changeViewMode}
+              loading={loading}
               selected={selected}
               onSelect={toggleSelect}
               onSelectAll={selectAll}
               onMoveInto={moveInto}
               onMoveSelected={() => setMoveOpen(true)}
+              onBulkShare={() => setBulkShareOpen(true)}
               hrefFor={hrefFor}
               onOpen={openEntry}
               onPreview={entry => setModal({ type: 'preview', entry })}
@@ -519,6 +541,7 @@ export default function Admin() {
         <PreviewModal
           filePath={currentPath === '/' ? `/${modal.entry.name}` : `${currentPath}/${modal.entry.name}`}
           fileName={modal.entry.name}
+          siblings={previewSiblings}
           onClose={() => setModal(null)}
         />
       )}

@@ -23,6 +23,12 @@ export const config = {
   // Per-IP concurrent stream cap — generous on purpose because the whole office
   // shares one NAT IP; it only blocks extreme parallel-connection abuse.
   downloadMaxConcurrentPerIp: parseInt(process.env['DOWNLOAD_MAX_CONCURRENT_PER_IP'] || '20', 10),
+  // Thumbnails get their OWN, much smaller pool. A per-tab client limiter can
+  // never bound total load: seven open gallery tabs behind one NAT IP would
+  // otherwise exhaust the download pool, and the casualties would be other
+  // people's file transfers. With a separate pool, decoration can occupy at
+  // most this many slots and real downloads keep all 20 regardless.
+  thumbMaxConcurrentPerIp: parseInt(process.env['THUMB_MAX_CONCURRENT_PER_IP'] || '6', 10),
   // Per-connection speed ceiling in MB/s. 0 = unlimited (disabled). Enable once
   // a sane per-link speed for this server's uplink is chosen.
   downloadRateLimitMbps: parseFloat(process.env['DOWNLOAD_RATE_LIMIT_MBPS'] || '0'),

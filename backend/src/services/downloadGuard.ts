@@ -18,8 +18,22 @@ import { config } from '../config';
  *      speed for this server's uplink is known.
  */
 
-// Live count of in-flight streams per client IP.
+/**
+ * Which budget a stream draws from. Thumbnails are decoration and must never
+ * be able to consume the slots a real download needs, so they get their own,
+ * smaller pool rather than a share of the same one.
+ */
+export type Pool = 'stream' | 'thumb';
+
+// Live count of in-flight streams per client IP, one map per pool.
 const active = new Map<string, number>();
+const activeThumbs = new Map<string, number>();
+
+function poolOf(pool: Pool): { map: Map<string, number>; cap: number } {
+  return pool === 'thumb'
+    ? { map: activeThumbs, cap: config.thumbMaxConcurrentPerIp }
+    : { map: active, cap: config.downloadMaxConcurrentPerIp };
+}
 
 export function clientIp(req: Request): string {
   // `trust proxy` is set on the app, so req.ip is the real client IP taken from
@@ -27,19 +41,29 @@ export function clientIp(req: Request): string {
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
 
-/** Try to reserve a stream slot for this IP. Returns false if at the cap. */
-export function acquireSlot(ip: string): boolean {
-  const n = active.get(ip) || 0;
-  if (n >= config.downloadMaxConcurrentPerIp) return false;
-  active.set(ip, n + 1);
+/**
+ * Try to reserve a stream slot for this IP. Returns false if at the cap.
+ * The pool defaults to 'stream' so every existing caller behaves exactly as
+ * before.
+ */
+export function acquireSlot(ip: string, pool: Pool = 'stream'): boolean {
+  const { map, cap } = poolOf(pool);
+  const n = map.get(ip) || 0;
+  if (n >= cap) return false;
+  map.set(ip, n + 1);
   return true;
 }
 
-/** Release a previously-acquired slot. Idempotency is the caller's job. */
-export function releaseSlot(ip: string): void {
-  const n = active.get(ip) || 0;
-  if (n <= 1) active.delete(ip);
-  else active.set(ip, n - 1);
+/**
+ * Release a previously-acquired slot. Idempotency is the caller's job.
+ * The pool MUST match the one the slot was acquired from — releasing into the
+ * wrong map leaks the original slot permanently.
+ */
+export function releaseSlot(ip: string, pool: Pool = 'stream'): void {
+  const { map } = poolOf(pool);
+  const n = map.get(ip) || 0;
+  if (n <= 1) map.delete(ip);
+  else map.set(ip, n - 1);
 }
 
 /**

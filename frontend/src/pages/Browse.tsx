@@ -1,83 +1,41 @@
-import { useState, useEffect, useCallback, MouseEvent } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  LogOut, RefreshCw, Folder, Eye, Download, Link2, PanelLeft, Upload,
-  Music, Video, Image as ImageIcon, FileText, File as FileIcon,
-  ChevronUp, ChevronDown,
-} from 'lucide-react';
+import { LogOut, RefreshCw, PanelLeft, Upload } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
+import FileList from '../components/FileList';
 import PreviewModal from '../components/PreviewModal';
 import SearchBar from '../components/SearchBar';
 import Brand from '../components/Brand';
 import ThemeToggle from '../components/ThemeToggle';
 import UploadZone from '../components/UploadZone';
 import { ToastContainer, toast } from '../components/Toast';
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return '—';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
-}
-
-function formatDate(ms: number): string {
-  return new Date(ms).toLocaleDateString();
-}
-
-type SortKey = 'name' | 'size' | 'modified';
-
-function isModifiedClick(e: MouseEvent): boolean {
-  return e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
-}
-
-function fileIcon(entry: FileEntry) {
-  if (entry.type === 'dir') return <Folder size={16} className="text-yellow-500 dark:text-yellow-400 shrink-0" />;
-  const ext = entry.name.split('.').pop()?.toLowerCase() || '';
-  if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext)) return <Music size={16} className="text-blue-500 dark:text-blue-400 shrink-0" />;
-  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return <Video size={16} className="text-purple-500 dark:text-purple-400 shrink-0" />;
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return <ImageIcon size={16} className="text-green-500 dark:text-green-400 shrink-0" />;
-  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return <FileText size={16} className="text-orange-500 dark:text-orange-400 shrink-0" />;
-  return <FileIcon size={16} className="text-slate-400 shrink-0" />;
-}
+import { ViewMode, loadViewMode, saveViewMode } from '../lib/viewModes';
 
 export default function Browse() {
   const navigate = useNavigate();
   // ── URL-driven folder path ──────────────────────────────────────────────
-  // Store the current folder in the URL query string (?path=/some/folder).
-  // Every folder change pushes a new browser-history entry, so the native
-  // Back button walks back through previously visited folders instead of
-  // jumping straight to the login page.
+  // The current folder lives in the query string (?path=/some/folder) so the
+  // native Back button walks back through visited folders instead of jumping
+  // to the login page.
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPath = searchParams.get('path') || '/';
 
   const role = localStorage.getItem('role') as 'viewer' | 'teacher' | null;
   const isTeacher = role === 'teacher';
+
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewing, setPreviewing] = useState<{ path: string; name: string } | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Closed by default on narrow screens — see the same note in Admin.tsx.
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window === 'undefined' ? true : window.innerWidth >= 1024);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [sortKey, setSortKey] = useState<SortKey>('name');
-  const [sortAsc, setSortAsc] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => loadViewMode('details'));
 
-  function toggleSort(k: SortKey) {
-    if (sortKey === k) setSortAsc(a => !a);
-    else { setSortKey(k); setSortAsc(true); }
-  }
-
-  const sorted = [...entries].sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
-    let cmp = 0;
-    if (sortKey === 'name') cmp = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-    else if (sortKey === 'size') cmp = a.size - b.size;
-    else cmp = a.modified - b.modified;
-    return sortAsc ? cmp : -cmp;
-  });
-
-  function folderHref(e: FileEntry): string {
-    const full = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`;
-    return `/browse?${new URLSearchParams({ path: full }).toString()}`;
+  function changeViewMode(m: ViewMode) {
+    setViewMode(m);
+    saveViewMode(m);
   }
 
   const load = useCallback(async (p: string) => {
@@ -98,58 +56,47 @@ export default function Browse() {
     }
   }, []);
 
-  // Reload whenever URL path changes (including browser Back/Forward)
+  // Reload whenever the URL path changes (including Back/Forward)
   useEffect(() => { load(currentPath); }, [currentPath, load]);
 
-  // Push a new history entry so Back works naturally
   function navigateTo(p: string) {
     setSearchParams({ path: p }, { replace: false });
   }
 
+  function absOf(name: string): string {
+    return currentPath === '/' ? `/${name}` : `${currentPath}/${name}`;
+  }
+
   function openEntry(e: FileEntry) {
-    if (e.type === 'dir') {
-      const next = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`;
-      navigateTo(next);
-    } else {
-      preview(e);
-    }
+    if (e.type === 'dir') navigateTo(absOf(e.name));
+    else preview(e);
   }
 
   function preview(e: FileEntry) {
-    const p = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`;
-    setPreviewing({ path: p, name: e.name });
+    setPreviewing({ path: absOf(e.name), name: e.name });
   }
 
-  function download(e: FileEntry) {
-    const p = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`;
-    const token = localStorage.getItem('token') || '';
-    const url = `/api/preview?path=${encodeURIComponent(p)}&t=${encodeURIComponent(token)}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = e.name;
-    a.click();
-  }
-
-  async function copyShareLink(e: FileEntry) {
-    if (!e.shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(e.shareUrl);
-      toast('Share link copied', 'success');
-    } catch {
-      toast('Copy failed', 'error');
+  function hrefFor(e: FileEntry): string {
+    if (e.type === 'dir') {
+      return `/browse?${new URLSearchParams({ path: absOf(e.name) }).toString()}`;
     }
+    const token = localStorage.getItem('token') || '';
+    return `/api/preview?path=${encodeURIComponent(absOf(e.name))}&t=${encodeURIComponent(token)}`;
   }
 
+  /** Uploaders may mint share links; viewers only copy links that already exist. */
   async function createAndCopyShare(e: FileEntry) {
-    const p = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`;
     try {
-      const res = await api.post('/shares', { filePath: p, type: e.type === 'dir' ? 'folder' : 'file' });
-      const url: string = res.data.url;
-      await navigator.clipboard.writeText(url).catch(() => {});
+      const res = await api.post('/shares', {
+        filePath: absOf(e.name),
+        type: e.type === 'dir' ? 'folder' : 'file',
+      });
+      await navigator.clipboard.writeText(res.data.url).catch(() => {});
       toast('Share link created & copied', 'success');
       load(currentPath);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create share';
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        || 'Failed to create share';
       toast(msg, 'error');
     }
   }
@@ -159,7 +106,6 @@ export default function Browse() {
       navigateTo(r.path);
     } else {
       const parent = r.path.substring(0, r.path.lastIndexOf('/')) || '/';
-      // Navigate to parent folder then open preview
       setSearchParams({ path: parent }, { replace: false });
       setPreviewing({ path: r.path, name: r.name });
     }
@@ -173,19 +119,28 @@ export default function Browse() {
 
   const breadcrumbs = currentPath.split('/').filter(Boolean);
 
+  // Files of the current folder, so the preview modal can step prev/next.
+  const previewSiblings = useMemo(
+    () => entries.filter(e => e.type === 'file').map(e => ({ path: absOf(e.name), name: e.name })),
+    // absOf is a pure function of currentPath
+    [entries, currentPath]  // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   return (
     <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
       {/* Top bar */}
-      <header className="flex items-center gap-4 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0">
+      <header className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0">
         <button onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle sidebar" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1 rounded">
           <PanelLeft size={20} />
         </button>
 
         <Brand variant="row" size={32} />
 
-        <SearchBar onSelect={onSearchSelect} />
-
         <div className="flex-1" />
+
+        <div className="hidden md:block w-72">
+          <SearchBar onSelect={onSearchSelect} />
+        </div>
 
         <ThemeToggle />
         {isTeacher && (
@@ -195,24 +150,24 @@ export default function Browse() {
             title="Upload files"
           >
             <Upload size={15} />
-            <span>آپلود</span>
+            <span className="hidden sm:inline">آپلود</span>
           </button>
         )}
-        <button onClick={() => load(currentPath)} aria-label="Refresh" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
+        <button onClick={() => load(currentPath)} aria-label="Refresh" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
           <RefreshCw size={16} />
         </button>
-        <button onClick={logout} aria-label="Log out" className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Log out">
+        <button onClick={logout} aria-label="Log out" title="Log out" className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
           <LogOut size={16} />
         </button>
       </header>
 
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-1 px-4 py-2 bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-sm shrink-0">
-        <button onClick={() => navigateTo('/')} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white">/ root</button>
+      <nav aria-label="Breadcrumb" className="flex items-center gap-1 px-4 py-2 bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-sm shrink-0 overflow-x-auto whitespace-nowrap">
+        <button onClick={() => navigateTo('/')} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white shrink-0">/ root</button>
         {breadcrumbs.map((seg, i) => {
           const path = '/' + breadcrumbs.slice(0, i + 1).join('/');
           return (
-            <span key={path} className="flex items-center gap-1">
+            <span key={path} className="flex items-center gap-1 shrink-0">
               <span className="text-slate-400 dark:text-slate-600">/</span>
               <button onClick={() => navigateTo(path)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white truncate max-w-[200px]" dir="auto">
                 {seg}
@@ -220,7 +175,7 @@ export default function Browse() {
             </span>
           );
         })}
-      </div>
+      </nav>
 
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
@@ -233,117 +188,20 @@ export default function Browse() {
           </aside>
         )}
 
-        <main className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="p-8 text-center text-slate-500">Loading…</div>
-          ) : entries.length === 0 ? (
-            <div className="p-12 text-center text-slate-500">
-              <Folder size={32} className="mx-auto mb-2 opacity-40" />
-              <p className="text-sm">This folder is empty.</p>
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-slate-200 dark:border-slate-700">
-                  <th className="px-2 py-2 font-medium w-12 text-left">
-                    <button onClick={() => toggleSort('name')} title="Row number — sort by natural order" className="hover:text-slate-900 dark:hover:text-slate-200">#</button>
-                  </th>
-                  <th className="text-left px-2 py-2 font-medium">
-                    <button onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200">
-                      Name {sortKey === 'name' ? (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null}
-                    </button>
-                  </th>
-                  <th className="text-right px-4 py-2 font-medium w-32">
-                    <button onClick={() => toggleSort('size')} className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200">
-                      {sortKey === 'size' ? (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null} Size
-                    </button>
-                  </th>
-                  <th className="text-right px-4 py-2 font-medium w-32">
-                    <button onClick={() => toggleSort('modified')} className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200">
-                      {sortKey === 'modified' ? (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null} Modified
-                    </button>
-                  </th>
-                  <th className="px-4 py-2 w-44"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((e, idx) => (
-                  <tr
-                    key={e.name}
-                    className="border-b border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800/50"
-                  >
-                    <td className="px-2 py-2.5 text-xs text-slate-400 tabular-nums">{idx + 1}</td>
-                    <td className="px-2 py-2.5">
-                      {e.type === 'dir' ? (
-                        <a
-                          href={folderHref(e)}
-                          onClick={ev => { if (isModifiedClick(ev)) return; ev.preventDefault(); openEntry(e); }}
-                          title="Open · Ctrl/⌘-click to open in a new tab"
-                          className="group flex items-center gap-2 text-left w-full"
-                        >
-                          {fileIcon(e)}
-                          <span dir="auto" className="text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:underline">{e.name}</span>
-                          {e.shareUrl && (
-                            <span title="Has a public share link" className="ml-1 shrink-0 text-blue-500 dark:text-blue-400">
-                              <Link2 size={12} />
-                            </span>
-                          )}
-                        </a>
-                      ) : (
-                        <button
-                          onClick={() => preview(e)}
-                          className="group flex items-center gap-2 text-left w-full"
-                        >
-                          {fileIcon(e)}
-                          <span dir="auto" className="text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">{e.name}</span>
-                          {e.shareUrl && (
-                            <span title="Has a public share link" className="ml-1 shrink-0 text-blue-500 dark:text-blue-400">
-                              <Link2 size={12} />
-                            </span>
-                          )}
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-xs text-slate-500 tabular-nums">
-                      {e.type === 'file' ? formatSize(e.size) : ''}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-xs text-slate-500">{formatDate(e.modified)}</td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex justify-end gap-1">
-                        {e.shareUrl ? (
-                          <button
-                            onClick={() => copyShareLink(e)}
-                            className="text-slate-500 hover:text-blue-500 dark:text-slate-400 dark:hover:text-blue-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
-                            title="Copy share link"
-                          >
-                            <Link2 size={15} />
-                          </button>
-                        ) : isTeacher ? (
-                          <button
-                            onClick={() => createAndCopyShare(e)}
-                            className="text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
-                            title="Create & copy share link"
-                          >
-                            <Link2 size={15} />
-                          </button>
-                        ) : null}
-                        {e.type === 'file' && (
-                          <>
-                            <button onClick={() => preview(e)} className="text-slate-500 hover:text-blue-500 dark:text-slate-400 dark:hover:text-blue-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Preview">
-                              <Eye size={15} />
-                            </button>
-                            <button onClick={() => download(e)} className="text-slate-500 hover:text-green-600 dark:text-slate-400 dark:hover:text-green-400 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700" title="Download">
-                              <Download size={15} />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+          <FileList
+            entries={entries}
+            currentPath={currentPath}
+            mode={viewMode}
+            onModeChange={changeViewMode}
+            loading={loading}
+            onOpen={openEntry}
+            onPreview={preview}
+            hrefFor={hrefFor}
+            // Uploaders can mint share links; viewers get copy-link on
+            // entries that already have one (handled inside FileList).
+            onShare={isTeacher ? createAndCopyShare : undefined}
+          />
         </main>
       </div>
 
@@ -351,6 +209,7 @@ export default function Browse() {
         <PreviewModal
           filePath={previewing.path}
           fileName={previewing.name}
+          siblings={previewSiblings}
           onClose={() => setPreviewing(null)}
         />
       )}

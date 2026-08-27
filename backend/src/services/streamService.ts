@@ -2,6 +2,7 @@ import fs from 'fs';
 import { Request, Response } from 'express';
 import { getMimeType } from '../utils/mime';
 import { clientIp, acquireSlot, releaseSlot, ThrottleStream, rateBytesPerSec } from './downloadGuard';
+import type { Pool } from './downloadGuard';
 
 interface RangeParsed {
   start: number;
@@ -44,6 +45,11 @@ function etag(stat: fs.Stats): string {
 export interface StreamOptions {
   /** Send Content-Disposition header. Default: false (matches plain static serving). */
   disposition?: boolean;
+  /**
+   * Which per-IP concurrency budget this stream draws from. Thumbnail traffic
+   * passes 'thumb' so it can never occupy slots meant for real downloads.
+   */
+  pool?: Pool;
 }
 
 export function streamFile(
@@ -93,9 +99,11 @@ export function streamFile(
   // A slot is reserved only for actual GET bodies (never HEAD / 304 / 416) and
   // released exactly once when the connection closes (normal finish OR abort).
   const ip = clientIp(req);
+  const pool: Pool = opts.pool ?? 'stream';
   let released = false;
   const release = (): void => {
-    if (!released) { released = true; releaseSlot(ip); }
+    // Same pool it was acquired from — anything else leaks the slot forever.
+    if (!released) { released = true; releaseSlot(ip, pool); }
   };
 
   function pipeBody(readable: fs.ReadStream): void {
@@ -113,6 +121,17 @@ export function streamFile(
 
   function rejectBusy(): void {
     // At the per-IP concurrent-stream cap — ask the client to back off briefly.
+    //
+    // The success headers were already set above, and shipping them on a 429
+    // is actively harmful: `Cache-Control: public, max-age=3600` would let the
+    // browser (or any proxy) cache the REJECTION for an hour and keep serving
+    // it in place of the file, and a stale ETag/Content-Disposition would
+    // describe content this response does not contain. Strip them all.
+    res.removeHeader('Content-Disposition');
+    res.removeHeader('ETag');
+    res.removeHeader('Last-Modified');
+    res.removeHeader('Content-Type');
+    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Retry-After', '5');
     res.status(429).end();
   }
@@ -136,7 +155,7 @@ export function streamFile(
       return;
     }
 
-    if (!acquireSlot(ip)) { rejectBusy(); return; }
+    if (!acquireSlot(ip, pool)) { rejectBusy(); return; }
     res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
     res.setHeader('Content-Length', chunkSize);
     res.status(206);
@@ -150,7 +169,7 @@ export function streamFile(
     return;
   }
 
-  if (!acquireSlot(ip)) { rejectBusy(); return; }
+  if (!acquireSlot(ip, pool)) { rejectBusy(); return; }
   res.setHeader('Content-Length', fileSize);
   res.status(200);
   pipeBody(fs.createReadStream(filePath));
