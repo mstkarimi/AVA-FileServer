@@ -97,13 +97,21 @@ export default function ShareManager() {
     return { active, revoked: shares.length - active, downloads };
   }, [shares]);
 
-  // ── Selection (spans pages; keyed by id, scoped to the current filter) ────
+  // ── Selection (spans pages; keyed by id) ──────────────────────────────────
+  // Selection persists across filter/search changes so you can refine and keep
+  // your picks. But BULK ACTIONS only ever touch the rows that are BOTH selected
+  // AND in the current filter ("actionable") — so switching the filter can never
+  // let you revoke/delete rows you can no longer see. The remainder is surfaced
+  // as "N outside filter" rather than silently acted on.
   const filteredIds = useMemo(() => filtered.map(s => s.id), [filtered]);
+  const filteredIdSet = useMemo(() => new Set(filteredIds), [filteredIds]);
   const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selected.has(id));
-  const someSelected = selected.size > 0 && !allFilteredSelected;
+  const someFilteredSelected = filteredIds.some(id => selected.has(id)) && !allFilteredSelected;
   const selectedShares = useMemo(() => shares.filter(s => selected.has(s.id)), [shares, selected]);
-  const selActive = selectedShares.filter(s => s.active).length;
-  const selRevoked = selectedShares.length - selActive;
+  const actionable = useMemo(() => selectedShares.filter(s => filteredIdSet.has(s.id)), [selectedShares, filteredIdSet]);
+  const actActive = actionable.filter(s => s.active).length;
+  const actRevoked = actionable.length - actActive;
+  const offFilter = selected.size - actionable.length;
 
   function toggleOne(id: number) {
     setSelected(prev => {
@@ -157,7 +165,7 @@ export default function ShareManager() {
 
   // ── Bulk actions (one transactional request each) ─────────────────────────
   async function bulkRevoke() {
-    const ids = selectedShares.filter(s => s.active).map(s => s.id);
+    const ids = actionable.filter(s => s.active).map(s => s.id);
     if (ids.length === 0) return;
     setBusy(true);
     try {
@@ -169,7 +177,7 @@ export default function ShareManager() {
     } catch { toast('Bulk revoke failed', 'error'); } finally { setBusy(false); }
   }
   async function bulkUnrevoke() {
-    const ids = selectedShares.filter(s => !s.active).map(s => s.id);
+    const ids = actionable.filter(s => !s.active).map(s => s.id);
     if (ids.length === 0) return;
     setBusy(true);
     try {
@@ -181,7 +189,7 @@ export default function ShareManager() {
     } catch { toast('Bulk re-activate failed', 'error'); } finally { setBusy(false); }
   }
   async function bulkDelete() {
-    const ids = selectedShares.map(s => s.id);
+    const ids = actionable.map(s => s.id);
     if (ids.length === 0) return;
     if (!confirm(`Permanently delete ${ids.length} share link${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) return;
     setBusy(true);
@@ -194,8 +202,9 @@ export default function ShareManager() {
     } catch { toast('Bulk delete failed', 'error'); } finally { setBusy(false); }
   }
   async function copySelected() {
-    const urls = selectedShares.map(s => s.url).join('\n');
-    try { await navigator.clipboard.writeText(urls); toast(`${selectedShares.length} link${selectedShares.length === 1 ? '' : 's'} copied`, 'success'); }
+    if (actionable.length === 0) return;
+    const urls = actionable.map(s => s.url).join('\n');
+    try { await navigator.clipboard.writeText(urls); toast(`${actionable.length} link${actionable.length === 1 ? '' : 's'} copied`, 'success'); }
     catch { toast('Copy failed', 'error'); }
   }
 
@@ -282,23 +291,30 @@ export default function ShareManager() {
           <span className="flex items-center gap-1.5 font-medium text-blue-700 dark:text-blue-300">
             <Check size={15} /> {selected.size} selected
           </span>
+          {offFilter > 0 && (
+            <span className="text-xs text-blue-600/70 dark:text-blue-300/70">· {offFilter} outside filter</span>
+          )}
           <div className="flex-1" />
-          <button onClick={copySelected} disabled={busy} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-700 disabled:opacity-50">
-            <Copy size={14} /> Copy links
-          </button>
-          {selActive > 0 && (
+          {actionable.length > 0 && (
+            <button onClick={copySelected} disabled={busy} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-700 disabled:opacity-50">
+              <Copy size={14} /> Copy links
+            </button>
+          )}
+          {actActive > 0 && (
             <button onClick={bulkRevoke} disabled={busy} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-500/10 disabled:opacity-50">
-              <Ban size={14} /> Revoke{selActive < selected.size ? ` (${selActive})` : ''}
+              <Ban size={14} /> Revoke{actActive < actionable.length ? ` (${actActive})` : ''}
             </button>
           )}
-          {selRevoked > 0 && (
+          {actRevoked > 0 && (
             <button onClick={bulkUnrevoke} disabled={busy} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-emerald-700 hover:bg-emerald-100 dark:text-emerald-400 dark:hover:bg-emerald-500/10 disabled:opacity-50">
-              <RotateCcw size={14} /> Re-activate{selRevoked < selected.size ? ` (${selRevoked})` : ''}
+              <RotateCcw size={14} /> Re-activate{actRevoked < actionable.length ? ` (${actRevoked})` : ''}
             </button>
           )}
-          <button onClick={bulkDelete} disabled={busy} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 disabled:opacity-50">
-            <Trash2 size={14} /> Delete
-          </button>
+          {actionable.length > 0 && (
+            <button onClick={bulkDelete} disabled={busy} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 disabled:opacity-50">
+              <Trash2 size={14} /> Delete
+            </button>
+          )}
           <button onClick={clearSelection} title="Clear selection" aria-label="Clear selection" className="p-1 rounded-lg text-slate-500 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-700">
             <X size={15} />
           </button>
@@ -332,7 +348,7 @@ export default function ShareManager() {
                     <input
                       type="checkbox"
                       checked={allFilteredSelected}
-                      ref={el => { if (el) el.indeterminate = someSelected; }}
+                      ref={el => { if (el) el.indeterminate = someFilteredSelected; }}
                       onChange={toggleAllFiltered}
                       aria-label={allFilteredSelected ? 'Deselect all' : 'Select all matching'}
                       className="w-4 h-4 accent-blue-500 cursor-pointer align-middle"
@@ -414,7 +430,7 @@ export default function ShareManager() {
                           : <span className="text-slate-400 dark:text-slate-600">Never</span>}
                       </td>
                       <td className="py-2.5 px-3" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-2">
                           {s.active ? (
                             <button onClick={() => revoke(s.id)} className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-100 dark:text-amber-500 dark:hover:bg-amber-500/10" title="Revoke (disable link)" aria-label={`Revoke ${baseName(s.filePath)}`}>
                               <Ban size={15} />
@@ -424,7 +440,8 @@ export default function ShareManager() {
                               <RotateCcw size={15} />
                             </button>
                           )}
-                          <button onClick={() => remove(s.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10" title="Delete permanently" aria-label={`Delete ${baseName(s.filePath)}`}>
+                          {/* Delete sits in its own zone (divider) so it is not mis-aimed for revoke. */}
+                          <button onClick={() => remove(s.id)} className="p-1.5 pl-2 ml-0.5 border-l border-slate-200 dark:border-slate-700 rounded-r-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10" title="Delete permanently" aria-label={`Delete ${baseName(s.filePath)}`}>
                             <Trash2 size={15} />
                           </button>
                         </div>
@@ -455,11 +472,11 @@ export default function ShareManager() {
             </div>
             {pageCount > 1 && (
               <div className="flex items-center gap-1">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={clampedPage <= 1} className={`${iconBtn} disabled:opacity-30 disabled:pointer-events-none`} aria-label="Previous page">
+                <button onClick={() => setPage(Math.max(1, clampedPage - 1))} disabled={clampedPage <= 1} className={`${iconBtn} disabled:opacity-30 disabled:pointer-events-none`} aria-label="Previous page">
                   <ChevronLeft size={16} />
                 </button>
                 <span className="px-2 tabular-nums">Page {clampedPage} / {pageCount}</span>
-                <button onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={clampedPage >= pageCount} className={`${iconBtn} disabled:opacity-30 disabled:pointer-events-none`} aria-label="Next page">
+                <button onClick={() => setPage(Math.min(pageCount, clampedPage + 1))} disabled={clampedPage >= pageCount} className={`${iconBtn} disabled:opacity-30 disabled:pointer-events-none`} aria-label="Next page">
                   <ChevronRight size={16} />
                 </button>
               </div>
