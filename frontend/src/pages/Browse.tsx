@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LogOut, RefreshCw, PanelLeft, Upload } from 'lucide-react';
+import { LogOut, RefreshCw, PanelLeft, PanelRight, Upload } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
 import FileList from '../components/FileList';
+import QuickAccess from '../components/QuickAccess';
+import NavCluster from '../components/NavCluster';
+import DetailsPanel from '../components/DetailsPanel';
 import PreviewModal from '../components/PreviewModal';
 import SearchBar from '../components/SearchBar';
 import Brand from '../components/Brand';
@@ -11,6 +14,8 @@ import ThemeToggle from '../components/ThemeToggle';
 import UploadZone from '../components/UploadZone';
 import { ToastContainer, toast } from '../components/Toast';
 import { ViewMode, loadViewMode, saveViewMode } from '../lib/viewModes';
+import { useFolderHistory } from '../lib/useFolderHistory';
+import { recordRecent } from '../lib/quickAccess';
 
 export default function Browse() {
   const navigate = useNavigate();
@@ -32,6 +37,22 @@ export default function Browse() {
     typeof window === 'undefined' ? true : window.innerWidth >= 1024);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => loadViewMode('details'));
+  const [active, setActive] = useState<FileEntry | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem('fileview.details');
+      if (v === 'open') return true;
+      if (v === 'closed') return false;
+    } catch { /* ignore */ }
+    return typeof window !== 'undefined' && window.innerWidth >= 1280;
+  });
+  function toggleDetails() {
+    setDetailsOpen(o => {
+      const next = !o;
+      try { localStorage.setItem('fileview.details', next ? 'open' : 'closed'); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   function changeViewMode(m: ViewMode) {
     setViewMode(m);
@@ -59,9 +80,17 @@ export default function Browse() {
   // Reload whenever the URL path changes (including Back/Forward)
   useEffect(() => { load(currentPath); }, [currentPath, load]);
 
+  useEffect(() => { recordRecent(currentPath); }, [currentPath]);
+  useEffect(() => { setActive(null); }, [currentPath]);
+  useEffect(() => {
+    setActive(a => (a && entries.some(e => e.name === a.name && e.type === a.type) ? a : null));
+  }, [entries]);
+
   function navigateTo(p: string) {
     setSearchParams({ path: p }, { replace: false });
   }
+
+  const { onBack, onForward, canBack, canForward } = useFolderHistory(currentPath, navigateTo);
 
   function absOf(name: string): string {
     return currentPath === '/' ? `/${name}` : `${currentPath}/${name}`;
@@ -136,12 +165,32 @@ export default function Browse() {
 
         <Brand variant="row" size={32} />
 
+        <NavCluster
+          currentPath={currentPath}
+          onNavigate={navigateTo}
+          onBack={onBack}
+          onForward={onForward}
+          canBack={canBack}
+          canForward={canForward}
+        />
+
         <div className="flex-1" />
 
         <div className="hidden md:block w-72">
           <SearchBar onSelect={onSearchSelect} />
         </div>
 
+        <button
+          onClick={toggleDetails}
+          aria-label="Toggle details panel"
+          aria-pressed={detailsOpen}
+          title="Details panel"
+          className={`p-1.5 rounded-lg transition-colors ${detailsOpen
+            ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15'
+            : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+        >
+          <PanelRight size={18} />
+        </button>
         <ThemeToggle />
         {isTeacher && (
           <button
@@ -181,10 +230,15 @@ export default function Browse() {
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && (
           <aside className="w-60 shrink-0 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
-            <div className="px-3 py-2 text-xs uppercase tracking-wide text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
+            <div className="shrink-0 max-h-[45%] overflow-y-auto">
+              <QuickAccess currentPath={currentPath} onNavigate={navigateTo} />
+            </div>
+            <div className="shrink-0 px-3 py-2 text-xs uppercase tracking-wide text-slate-500 font-medium">
               Folders
             </div>
-            <FileTree currentPath={currentPath} onNavigate={navigateTo} />
+            <div className="flex-1 min-h-0">
+              <FileTree currentPath={currentPath} onNavigate={navigateTo} />
+            </div>
           </aside>
         )}
 
@@ -197,12 +251,28 @@ export default function Browse() {
             loading={loading}
             onOpen={openEntry}
             onPreview={preview}
+            onActivate={setActive}
+            activeName={active?.name ?? null}
             hrefFor={hrefFor}
             // Uploaders can mint share links; viewers get copy-link on
             // entries that already have one (handled inside FileList).
             onShare={isTeacher ? createAndCopyShare : undefined}
           />
         </main>
+
+        {detailsOpen && (
+          <DetailsPanel
+            entry={active}
+            path={active ? absOf(active.name) : null}
+            currentPath={currentPath}
+            itemCount={entries.length}
+            onClose={toggleDetails}
+            hrefFor={hrefFor}
+            onOpen={openEntry}
+            onPreview={preview}
+            onShare={isTeacher ? createAndCopyShare : undefined}
+          />
+        )}
       </div>
 
       {previewing && (

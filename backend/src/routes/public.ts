@@ -83,6 +83,11 @@ const ICON = {
   doc:     SVG('i-doc',     DOC_PATH),
   archive: SVG('i-archive', '<rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/>'),
   file:    SVG('i-file',    DOC_PATH),
+  link:    SVG('',          '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/>'),
+  tab:     SVG('',          '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'),
+  dl:      SVG('',          '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'),
+  viewList: SVG('',         '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>'),
+  viewGrid: SVG('',         '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'),
 };
 
 const EXT_KIND: Record<string, keyof typeof ICON> = {};
@@ -135,7 +140,7 @@ function renderFolderIndex(
     }
   }
 
-  const rows: string[] = [];
+  const items: string[] = [];
 
   if (subPath) {
     const parts = subPath.split('/').filter(Boolean);
@@ -143,19 +148,25 @@ function renderFolderIndex(
     const up = parts.length === 0
       ? `/${share.hash}/`
       : `/${share.hash}/${parts.map(encodeURIComponent).join('/')}/`;
-    rows.push(
-      `<tr class="up"><td class="cb"></td>` +
-      `<td class="nm"><a href="${escapeHtml(up)}">${ICON.up}<span>..</span></a></td>` +
-      `<td class="num"></td><td class="date"></td></tr>`
+    items.push(
+      `<div class="item up" data-name=".." data-kind="up">` +
+      `<span class="cb"></span>` +
+      `<a class="nm" href="${escapeHtml(up)}">${ICON.up}<span class="lbl">..</span></a>` +
+      `<span class="sz"></span><span class="dt"></span><span class="act"></span></div>`
     );
   }
 
   for (const d of dirs) {
     const href = encodeURIComponent(d.name) + '/';
-    rows.push(
-      `<tr data-name="${escapeHtml(d.name.toLowerCase())}"><td class="cb"></td>` +
-      `<td class="nm"><a href="${escapeHtml(href)}" dir="auto">${ICON.folder}<span>${escapeHtml(d.name)}</span></a></td>` +
-      `<td class="num">—</td><td class="date"></td></tr>`
+    items.push(
+      `<div class="item" data-name="${escapeHtml(d.name.toLowerCase())}" data-href="${escapeHtml(href)}" data-kind="dir">` +
+      `<span class="cb"></span>` +
+      `<a class="nm" href="${escapeHtml(href)}" dir="auto">${ICON.folder}<span class="lbl">${escapeHtml(d.name)}</span></a>` +
+      `<span class="sz">Folder</span><span class="dt"></span>` +
+      `<span class="act">` +
+      `<button type="button" class="ab" data-do="link" title="Copy link" aria-label="Copy link to ${escapeHtml(d.name)}">${ICON.link}</button>` +
+      `<button type="button" class="ab" data-do="tab" title="Open in new tab" aria-label="Open ${escapeHtml(d.name)} in a new tab">${ICON.tab}</button>` +
+      `</span></div>`
     );
   }
 
@@ -165,11 +176,16 @@ function renderFolderIndex(
     try { const st = fs.statSync(abs); size = st.size; mtime = st.mtimeMs; } catch { /* */ }
     const href = encodeURIComponent(f.name);
     const date = mtime ? new Date(mtime).toISOString().slice(0, 16).replace('T', ' ') : '';
-    rows.push(
-      `<tr data-name="${escapeHtml(f.name.toLowerCase())}">` +
-      `<td class="cb"><input type="checkbox" class="sel" data-name="${escapeHtml(f.name)}" data-href="${escapeHtml(href)}" aria-label="Select ${escapeHtml(f.name)}"></td>` +
-      `<td class="nm"><a href="${escapeHtml(href)}" dir="auto">${iconFor(f.name)}<span>${escapeHtml(f.name)}</span></a></td>` +
-      `<td class="num">${fmtSize(size)}</td><td class="date">${escapeHtml(date)}</td></tr>`
+    items.push(
+      `<div class="item" data-name="${escapeHtml(f.name.toLowerCase())}" data-href="${escapeHtml(href)}" data-dl="${escapeHtml(f.name)}" data-kind="file">` +
+      `<label class="cb"><input type="checkbox" class="sel" data-name="${escapeHtml(f.name)}" data-href="${escapeHtml(href)}" aria-label="Select ${escapeHtml(f.name)}"></label>` +
+      `<a class="nm" href="${escapeHtml(href)}" dir="auto">${iconFor(f.name)}<span class="lbl">${escapeHtml(f.name)}</span></a>` +
+      `<span class="sz">${fmtSize(size)}</span><span class="dt">${escapeHtml(date)}</span>` +
+      `<span class="act">` +
+      `<button type="button" class="ab" data-do="link" title="Copy link" aria-label="Copy link to ${escapeHtml(f.name)}">${ICON.link}</button>` +
+      `<button type="button" class="ab" data-do="tab" title="Open in new tab" aria-label="Open ${escapeHtml(f.name)} in a new tab">${ICON.tab}</button>` +
+      `<button type="button" class="ab" data-do="dl" title="Download" aria-label="Download ${escapeHtml(f.name)}">${ICON.dl}</button>` +
+      `</span></div>`
     );
   }
 
@@ -208,86 +224,83 @@ function renderFolderIndex(
   }
 }
 *{box-sizing:border-box}
-body{
-  margin:0; padding:2rem 1rem 6rem;
-  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
-  -webkit-font-smoothing:antialiased;
-  background:var(--bg); color:var(--text);
-}
+body{margin:0;padding:2rem 1rem 6rem;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text)}
 .wrap{max-width:1080px;margin:0 auto}
-
 h1{font-size:1.35rem;font-weight:600;margin:0 0 .35rem;letter-spacing:-.01em;word-break:break-word}
 .crumbs{font-size:.82rem;color:var(--muted);margin-bottom:.15rem;word-break:break-all}
-.crumbs a{color:inherit;text-decoration:none}
-.crumbs a:hover{color:var(--accent);text-decoration:underline}
+.crumbs a{color:inherit;text-decoration:none}.crumbs a:hover{color:var(--accent);text-decoration:underline}
 .crumbs .sep{opacity:.45;margin:0 .4rem}
 .count{font-size:.78rem;color:var(--faint);margin-bottom:1.1rem}
-
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
-
 .tools{display:flex;align-items:center;gap:.6rem;padding:.6rem .85rem;border-bottom:1px solid var(--line)}
-.tools input[type=search]{
-  flex:1;min-width:0;appearance:none;
-  background:var(--bg);border:1px solid var(--line);border-radius:8px;
-  padding:.4rem .7rem;font-size:.85rem;color:var(--text);font-family:inherit;
-}
+.tools input[type=search]{flex:1;min-width:0;appearance:none;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;font-size:.85rem;color:var(--text);font-family:inherit}
 .tools input[type=search]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.tools label{display:flex;align-items:center;gap:.45rem;font-size:.8rem;color:var(--muted);white-space:nowrap;cursor:pointer}
+.tools label.all{display:flex;align-items:center;gap:.45rem;font-size:.8rem;color:var(--muted);white-space:nowrap;cursor:pointer}
+.seg{display:flex;gap:.15rem;padding:.15rem;border-radius:9px;background:var(--bg);border:1px solid var(--line)}
+.seg button{display:flex;align-items:center;justify-content:center;width:30px;height:28px;border:0;border-radius:7px;background:none;color:var(--muted);cursor:pointer}
+.seg button.on{background:var(--panel);color:var(--accent);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg svg{width:16px;height:16px}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:0}
+.head{display:grid;grid-template-columns:2.4rem 1fr 6rem 9.5rem 6.5rem;gap:.5rem;padding:.5rem .85rem;border-bottom:1px solid var(--line);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.head .r{text-align:right}
+.item{align-items:center}
+.item .cb{display:flex;align-items:center;justify-content:center}
+.item .nm{display:flex;align-items:center;gap:.55rem;color:var(--text);text-decoration:none;min-width:0}
+.item .nm .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.875rem}
+.item .nm:hover .lbl{color:var(--accent);text-decoration:underline}
+.item .nm svg{flex:0 0 auto;width:18px;height:18px;stroke-width:1.8}
+.i-folder{color:#f59e0b}.i-audio{color:#0ea5e9}.i-video{color:#8b5cf6}.i-image{color:#10b981}.i-doc{color:#f97316}.i-archive{color:#ca8a04}.i-file{color:var(--faint)}
+.sz,.dt{color:var(--muted);font-size:.78rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.act{display:flex;align-items:center;gap:.1rem;justify-content:flex-end}
+.ab{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;border-radius:8px;background:none;color:var(--faint);cursor:pointer}
+.ab:hover{background:var(--hover);color:var(--accent)}
+.ab svg{width:16px;height:16px;stroke-width:1.9}
+.up .lbl{color:var(--muted)}
 
-table{width:100%;border-collapse:collapse}
-thead th{
-  text-align:left;font-weight:500;font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--faint);padding:.55rem .85rem;border-bottom:1px solid var(--line);white-space:nowrap;
-}
-tbody td{padding:.4rem .85rem;border-bottom:1px solid var(--line)}
-tbody tr:last-child td{border-bottom:0}
-tbody tr:hover{background:var(--hover)}
-tbody tr.checked{background:var(--accent-soft)}
+/* ---- List view (default): aligned columns, one row per item ---- */
+.view-list #items .item{display:grid;grid-template-columns:2.4rem 1fr 6rem 9.5rem 6.5rem;gap:.5rem;padding:.35rem .85rem;border-bottom:1px solid var(--line)}
+.view-list #items .item:last-child{border-bottom:0}
+.view-list #items .item:hover{background:var(--hover)}
+.view-list #items .item.on{background:var(--accent-soft)}
+.view-list .sz{text-align:right}
+.view-list .act{opacity:0;transition:opacity .12s}
+.view-list .item:hover .act,.view-list .item:focus-within .act,.view-list .item.on .act{opacity:1}
 
-.cb{width:2.6rem}
-.cb input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;vertical-align:middle;margin:0}
-.nm a{display:flex;align-items:center;gap:.55rem;color:var(--text);text-decoration:none;min-width:0;padding:.2rem 0}
-.nm a span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.875rem}
-.nm a:hover span{color:var(--accent);text-decoration:underline}
-.nm svg{flex:0 0 auto;width:17px;height:17px;stroke-width:1.8}
-.i-folder{color:#f59e0b}.i-audio{color:#0ea5e9}.i-video{color:#8b5cf6}
-.i-image{color:#10b981}.i-doc{color:#f97316}.i-archive{color:#ca8a04}.i-file{color:var(--faint)}
-.num,.date{white-space:nowrap;color:var(--muted);font-size:.78rem;font-variant-numeric:tabular-nums}
-.num{text-align:right;width:6.5rem}
-.date{width:10rem}
-tr.up .nm a span{color:var(--muted)}
+/* ---- Grid view: cards ---- */
+.head.list-only{display:grid}
+.view-grid .head.list-only{display:none}
+.view-grid #items{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.6rem;padding:.85rem}
+.view-grid #items .item{position:relative;display:flex;flex-direction:column;gap:.4rem;padding:.85rem;border:1px solid var(--line);border-radius:12px}
+.view-grid #items .item:hover{border-color:var(--accent);background:var(--hover)}
+.view-grid #items .item.on{border-color:var(--accent);background:var(--accent-soft)}
+.view-grid .item .cb{position:absolute;top:.5rem;left:.5rem}
+.view-grid .item .nm{flex-direction:column;text-align:center;gap:.5rem}
+.view-grid .item .nm svg{width:38px;height:38px}
+.view-grid .item .nm .lbl{white-space:normal;max-height:2.4em;font-size:.8rem;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.view-grid .dt{display:none}
+.view-grid .sz{text-align:center;font-size:.72rem}
+.view-grid .act{justify-content:center;opacity:0;transition:opacity .12s}
+.view-grid .item:hover .act,.view-grid .item:focus-within .act,.view-grid .item.on .act{opacity:1}
+.view-grid .item.up{display:none}
+
 .empty{padding:2.5rem;text-align:center;color:var(--muted);font-size:.85rem}
 
-/* Selection bar. Visibility is driven by a CLASS, never the [hidden] attribute:
-   this element sets display:flex, which outranks the UA rule that [hidden]
-   relies on, so the bar would otherwise never hide. */
-#bar{
-  position:fixed;left:50%;bottom:1.25rem;transform:translateX(-50%) translateY(150%);
-  display:flex;align-items:center;gap:.85rem;
-  background:var(--panel);color:var(--text);border:1px solid var(--line);
-  box-shadow:var(--shadow);border-radius:12px;padding:.6rem .75rem .6rem 1rem;
-  font-size:.85rem;max-width:calc(100vw - 2rem);z-index:20;
-  opacity:0;pointer-events:none;transition:transform .18s ease,opacity .18s ease;
-}
+#bar{position:fixed;left:50%;bottom:1.25rem;transform:translateX(-50%) translateY(150%);display:flex;align-items:center;gap:.85rem;background:var(--panel);color:var(--text);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:12px;padding:.6rem .75rem .6rem 1rem;font-size:.85rem;max-width:calc(100vw - 2rem);z-index:20;opacity:0;pointer-events:none;transition:transform .18s ease,opacity .18s ease}
 #bar.on{transform:translateX(-50%) translateY(0);opacity:1;pointer-events:auto}
 #bar b{font-weight:600;white-space:nowrap}
-#dl{
-  display:inline-flex;align-items:center;gap:.4rem;
-  background:var(--accent);color:#fff;border:0;border-radius:9px;
-  padding:.45rem .9rem;font-size:.84rem;font-family:inherit;cursor:pointer;white-space:nowrap;
-}
-#dl:hover{filter:brightness(1.08)}
-#dl:disabled{opacity:.6;cursor:default}
-#clear{background:none;border:0;color:var(--muted);cursor:pointer;font-size:1.1rem;line-height:1;padding:.2rem .35rem;font-family:inherit}
-#clear:hover{color:var(--text)}
+#dl{display:inline-flex;align-items:center;gap:.4rem;background:var(--accent);color:#fff;border:0;border-radius:9px;padding:.45rem .9rem;font-size:.84rem;font-family:inherit;cursor:pointer;white-space:nowrap}
+#dl:hover{filter:brightness(1.08)}#dl:disabled{opacity:.6;cursor:default}
+#clear{background:none;border:0;color:var(--muted);cursor:pointer;font-size:1.1rem;line-height:1;padding:.2rem .35rem;font-family:inherit}#clear:hover{color:var(--text)}
 #st{color:var(--muted);font-size:.78rem;white-space:nowrap}
 footer{margin-top:1.5rem;text-align:center;font-size:.75rem;color:var(--faint)}
+.toast{position:fixed;left:50%;bottom:5.5rem;transform:translateX(-50%);background:#16a34a;color:#fff;padding:.5rem .9rem;border-radius:9px;font-size:.82rem;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30}
+.toast.on{opacity:1}
 @media (max-width:640px){
   body{padding:1.25rem .75rem 6rem}
-  .date{display:none}
-  thead th.date{display:none}
+  .view-list #items .item,.head{grid-template-columns:2.2rem 1fr 5rem 4rem;}
+  .dt{display:none}.head .dt{display:none}
 }
-@media (prefers-reduced-motion: reduce){#bar{transition:none}}
+@media (prefers-reduced-motion: reduce){#bar,.act,.toast{transition:none}}
 </style>
 </head>
 <body>
@@ -298,20 +311,19 @@ footer{margin-top:1.5rem;text-align:center;font-size:.75rem;color:var(--faint)}
 
   <div class="panel">
     <div class="tools">
-      ${files.length ? '<label><input type="checkbox" id="all"> Select all</label>' : ''}
+      ${files.length ? '<label class="all"><input type="checkbox" id="all"> Select all</label>' : ''}
       <input type="search" id="filter" placeholder="Filter by name…" aria-label="Filter by name" autocomplete="off">
+      <div class="seg" role="group" aria-label="View mode">
+        <button type="button" id="v-list" class="on" title="List view" aria-label="List view">${ICON.viewList}</button>
+        <button type="button" id="v-grid" title="Grid view" aria-label="Grid view">${ICON.viewGrid}</button>
+      </div>
     </div>
-    <table>
-      <thead><tr>
-        <th class="cb"></th>
-        <th>Name</th>
-        <th class="num">Size</th>
-        <th class="date">Modified</th>
-      </tr></thead>
-      <tbody id="rows">${rows.join('\n')}</tbody>
-    </table>
-    ${rows.length === 0 ? '<div class="empty">This folder is empty.</div>' : ''}
-    <div class="empty" id="nomatch" style="display:none">No files match that filter.</div>
+    <div class="head list-only">
+      <span></span><span>Name</span><span class="r">Size</span><span>Modified</span><span></span>
+    </div>
+    <div id="items">${items.join('\n')}</div>
+    ${items.length === 0 ? '<div class="empty">This folder is empty.</div>' : ''}
+    <div class="empty" id="nomatch" style="display:none">No items match that filter.</div>
   </div>
 
   <footer>Shared folder</footer>
@@ -323,9 +335,11 @@ footer{margin-top:1.5rem;text-align:center;font-size:.75rem;color:var(--faint)}
   <span id="st" aria-live="polite"></span>
   <button id="clear" type="button" title="Clear selection" aria-label="Clear selection">&times;</button>
 </div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 (function(){
+  var root = document.documentElement;
   var all = document.getElementById('all');
   var bar = document.getElementById('bar');
   var n = document.getElementById('n');
@@ -333,50 +347,98 @@ footer{margin-top:1.5rem;text-align:center;font-size:.75rem;color:var(--faint)}
   var st = document.getElementById('st');
   var clear = document.getElementById('clear');
   var filter = document.getElementById('filter');
-  var tbody = document.getElementById('rows');
+  var items = document.getElementById('items');
   var nomatch = document.getElementById('nomatch');
+  var panel = items.parentNode;
+  var toastEl = document.getElementById('toast');
+  var toastT = null;
 
   function boxes(){ return [].slice.call(document.querySelectorAll('.sel')); }
-  function visibleBoxes(){ return boxes().filter(function(b){ return b.closest('tr').style.display !== 'none'; }); }
+  function visRows(){ return [].slice.call(items.children).filter(function(r){ return r.style.display !== 'none'; }); }
+  function visibleBoxes(){ return boxes().filter(function(b){ return b.closest('.item').style.display !== 'none'; }); }
   function checked(){ return boxes().filter(function(b){ return b.checked; }); }
 
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add('on');
+    if (toastT) clearTimeout(toastT);
+    toastT = setTimeout(function(){ toastEl.classList.remove('on'); }, 1800);
+  }
+
+  // Copy with a legacy fallback: some browsers/policies block the async
+  // clipboard API even over https, so fall back to a hidden textarea + execCommand.
+  function copyText(text){
+    function legacy(){
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly','');
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast(ok ? 'Link copied' : 'Copy failed');
+      } catch(e){ toast('Copy failed'); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function(){ toast('Link copied'); }, legacy);
+    } else { legacy(); }
+  }
+
   function refresh(){
-    var sel = checked();
-    var c = sel.length;
+    var c = checked().length;
     n.textContent = c + (c === 1 ? ' file selected' : ' files selected');
     bar.classList.toggle('on', c > 0);
     if (c === 0) st.textContent = '';
-    boxes().forEach(function(b){ b.closest('tr').classList.toggle('checked', b.checked); });
+    boxes().forEach(function(b){ b.closest('.item').classList.toggle('on', b.checked); });
     if (all){
       var vis = visibleBoxes();
-      var visChecked = vis.filter(function(b){ return b.checked; }).length;
-      all.checked = vis.length > 0 && visChecked === vis.length;
-      all.indeterminate = visChecked > 0 && visChecked < vis.length;
+      var vc = vis.filter(function(b){ return b.checked; }).length;
+      all.checked = vis.length > 0 && vc === vis.length;
+      all.indeterminate = vc > 0 && vc < vis.length;
     }
   }
 
-  // Delegated, so it also catches state the browser restores on back/reload —
-  // a restored checkbox fires no change event, which used to leave the bar
-  // reading "0 files selected" next to a ticked box.
-  tbody.addEventListener('change', function(e){ if (e.target.classList.contains('sel')) refresh(); });
+  // View mode (persisted). Never trust the stored value blindly.
+  function setView(v){
+    var grid = v === 'grid';
+    panel.parentNode.classList.remove('view-list','view-grid');
+    panel.parentNode.classList.add(grid ? 'view-grid' : 'view-list');
+    document.getElementById('v-grid').classList.toggle('on', grid);
+    document.getElementById('v-list').classList.toggle('on', !grid);
+    try { localStorage.setItem('share.view', grid ? 'grid' : 'list'); } catch(e){}
+  }
+  var saved = 'list';
+  try { if (localStorage.getItem('share.view') === 'grid') saved = 'grid'; } catch(e){}
+  setView(saved);
+  document.getElementById('v-list').addEventListener('click', function(){ setView('list'); });
+  document.getElementById('v-grid').addEventListener('click', function(){ setView('grid'); });
 
-  if (all) all.addEventListener('change', function(){
-    visibleBoxes().forEach(function(b){ b.checked = all.checked; });
-    refresh();
-  });
+  items.addEventListener('change', function(e){ if (e.target.classList.contains('sel')) refresh(); });
+  if (all) all.addEventListener('change', function(){ visibleBoxes().forEach(function(b){ b.checked = all.checked; }); refresh(); });
+  clear.addEventListener('click', function(){ boxes().forEach(function(b){ b.checked = false; }); refresh(); });
 
-  clear.addEventListener('click', function(){
-    boxes().forEach(function(b){ b.checked = false; });
-    refresh();
+  // Per-item action buttons (delegated).
+  items.addEventListener('click', function(e){
+    var btn = e.target.closest('.ab'); if (!btn) return;
+    e.preventDefault();
+    var item = btn.closest('.item');
+    var rel = item.getAttribute('data-href'); if (!rel) return;
+    var url = new URL(rel, location.href).href;
+    var act = btn.getAttribute('data-do');
+    if (act === 'tab') { window.open(url, '_blank', 'noopener'); }
+    else if (act === 'link') { copyText(url); }
+    else if (act === 'dl') {
+      var a = document.createElement('a'); a.href = url; a.download = item.getAttribute('data-dl') || '';
+      document.body.appendChild(a); a.click(); a.remove();
+    }
   });
 
   if (filter) filter.addEventListener('input', function(){
     var q = filter.value.trim().toLowerCase();
     var shown = 0;
-    [].slice.call(tbody.rows).forEach(function(tr){
-      if (tr.classList.contains('up')) return;
-      var hit = !q || (tr.dataset.name || '').indexOf(q) !== -1;
-      tr.style.display = hit ? '' : 'none';
+    [].slice.call(items.children).forEach(function(it){
+      if (it.classList.contains('up')) return;
+      var hit = !q || (it.getAttribute('data-name') || '').indexOf(q) !== -1;
+      it.style.display = hit ? '' : 'none';
       if (hit) shown++;
     });
     nomatch.style.display = shown === 0 ? '' : 'none';
@@ -384,26 +446,19 @@ footer{margin-top:1.5rem;text-align:center;font-size:.75rem;color:var(--faint)}
   });
 
   dl.addEventListener('click', function(){
-    var items = checked();
-    if (!items.length) return;
+    var list = checked();
+    if (!list.length) return;
     dl.disabled = true;
     var i = 0;
-    // Sequential, spaced downloads: the lightest option on the server. It reuses
-    // the ordinary range-capable file stream (no zip, no CPU, no extra
-    // dependency) and stays well inside the per-IP concurrency cap. The gap
-    // gives the browser time to register each one instead of dropping
-    // rapid-fire clicks.
+    // Sequential, spaced downloads — lightest on the server (reuses the normal
+    // range-capable file stream, no zip, no CPU) and stays under the per-IP
+    // concurrency cap. The gap lets the browser register each download.
     function next(){
-      if (i >= items.length){
-        st.textContent = 'Started ' + items.length + ' download' + (items.length === 1 ? '' : 's');
-        dl.disabled = false;
-        return;
-      }
-      var b = items[i++];
-      var a = document.createElement('a');
-      a.href = b.dataset.href; a.download = b.dataset.name;
+      if (i >= list.length){ st.textContent = 'Started ' + list.length + ' download' + (list.length === 1 ? '' : 's'); dl.disabled = false; return; }
+      var b = list[i++];
+      var a = document.createElement('a'); a.href = b.dataset.href; a.download = b.dataset.name;
       document.body.appendChild(a); a.click(); a.remove();
-      st.textContent = 'Downloading ' + i + ' / ' + items.length;
+      st.textContent = 'Downloading ' + i + ' / ' + list.length;
       setTimeout(next, 800);
     }
     next();

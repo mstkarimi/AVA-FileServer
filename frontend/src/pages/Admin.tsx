@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  LogOut, Upload, FolderPlus, RefreshCw, PanelLeft, Share2, Users,
-  FolderOpen, Pencil, Trash2, Link as LinkIcon, ExternalLink,
+  LogOut, Upload, FolderPlus, RefreshCw, PanelLeft, PanelRight, Share2, Users,
+  FolderOpen, Pencil, Trash2, Link as LinkIcon, ExternalLink, Star,
 } from 'lucide-react';
 import api, { FileEntry, SearchResult } from '../api/client';
 import FileTree from '../components/FileTree';
 import FileList from '../components/FileList';
+import QuickAccess from '../components/QuickAccess';
+import NavCluster from '../components/NavCluster';
+import DetailsPanel from '../components/DetailsPanel';
 import UploadZone from '../components/UploadZone';
 import PreviewModal from '../components/PreviewModal';
 import ShareDialog from '../components/ShareDialog';
@@ -20,6 +23,8 @@ import Brand from '../components/Brand';
 import ThemeToggle from '../components/ThemeToggle';
 import { ToastContainer, toast } from '../components/Toast';
 import { ViewMode, loadViewMode, saveViewMode } from '../lib/viewModes';
+import { useFolderHistory } from '../lib/useFolderHistory';
+import { recordRecent, togglePin } from '../lib/quickAccess';
 
 type Modal =
   | { type: 'upload' }
@@ -59,6 +64,27 @@ export default function Admin() {
     saveViewMode(m);
   }
 
+  // Right-hand details/preview panel — the item it describes, and whether it's
+  // open (remembered, but closed by default on narrow screens).
+  const [active, setActive] = useState<FileEntry | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem('fileview.details');
+      if (v === 'open') return true;
+      if (v === 'closed') return false;
+    } catch { /* ignore */ }
+    return typeof window !== 'undefined' && window.innerWidth >= 1280;
+  });
+  function toggleDetails() {
+    setDetailsOpen(o => {
+      const next = !o;
+      try { localStorage.setItem('fileview.details', next ? 'open' : 'closed'); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  const { onBack, onForward, canBack, canForward } = useFolderHistory(currentPath, navigate_to);
+
   const load = useCallback(async (path = currentPath) => {
     setLoading(true);
     try {
@@ -74,6 +100,16 @@ export default function Admin() {
 
   // Reload whenever URL path changes (Back/Forward included)
   useEffect(() => { load(); }, [load]);
+
+  // Remember visited folders for the Quick Access "Recent" list.
+  useEffect(() => { if (tab === 'files') recordRecent(currentPath); }, [currentPath, tab]);
+
+  // The details panel targets an entry by identity; drop it when the folder
+  // changes or the entry disappears (deleted, renamed, moved).
+  useEffect(() => { setActive(null); }, [currentPath]);
+  useEffect(() => {
+    setActive(a => (a && entries.some(e => e.name === a.name && e.type === a.type) ? a : null));
+  }, [entries]);
 
   // Push a new browser-history entry so Back walks back through folders
   function navigate_to(path: string) {
@@ -329,18 +365,38 @@ export default function Admin() {
 
         <Brand variant="row" size={32} />
 
-        <div className="hidden lg:flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400 min-w-0 ml-2">
-          <button onClick={() => navigate_to('/')} className="hover:text-slate-900 dark:hover:text-white shrink-0">/</button>
-          {breadcrumbs.map((seg, i) => {
-            const path = '/' + breadcrumbs.slice(0, i + 1).join('/');
-            return (
-              <span key={path} className="flex items-center gap-1">
-                <span>/</span>
-                <button onClick={() => navigate_to(path)} className="hover:text-slate-900 dark:hover:text-white truncate max-w-[120px]">{seg}</button>
-              </span>
-            );
-          })}
-        </div>
+        {tab === 'files' && (
+          <NavCluster
+            currentPath={currentPath}
+            onNavigate={navigate_to}
+            onBack={onBack}
+            onForward={onForward}
+            canBack={canBack}
+            canForward={canForward}
+          />
+        )}
+
+        {tab === 'files' && (
+          <nav aria-label="Breadcrumb" className="hidden lg:flex items-center min-w-0 ml-1 px-2 h-9 rounded-lg bg-slate-100 dark:bg-slate-700/50 text-sm">
+            <button onClick={() => navigate_to('/')} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white shrink-0">root</button>
+            {breadcrumbs.map((seg, i) => {
+              const path = '/' + breadcrumbs.slice(0, i + 1).join('/');
+              const last = i === breadcrumbs.length - 1;
+              return (
+                <span key={path} className="flex items-center min-w-0">
+                  <span className="text-slate-300 dark:text-slate-600 mx-1">/</span>
+                  <button
+                    onClick={() => navigate_to(path)}
+                    dir="auto"
+                    className={`truncate max-w-[160px] ${last ? 'text-slate-800 dark:text-slate-100 font-medium' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
+                  >
+                    {seg}
+                  </button>
+                </span>
+              );
+            })}
+          </nav>
+        )}
 
         <div className="flex-1" />
 
@@ -377,6 +433,19 @@ export default function Admin() {
                 <Upload size={15} /> Upload
               </button>
             </>
+          )}
+          {tab === 'files' && (
+            <button
+              onClick={toggleDetails}
+              aria-label="Toggle details panel"
+              aria-pressed={detailsOpen}
+              title="Details panel"
+              className={`p-1.5 rounded-lg transition-colors ${detailsOpen
+                ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-500/15'
+                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+            >
+              <PanelRight size={18} />
+            </button>
           )}
           <ThemeToggle />
           <button onClick={() => load()} aria-label="Refresh" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
@@ -449,13 +518,18 @@ export default function Admin() {
         </div>
       ) : (
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar */}
+          {/* Sidebar: Quick Access (pins + recent) above the untouched tree. */}
           {sidebarOpen && (
             <aside className="w-56 shrink-0 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
-              <div className="px-3 py-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-500 font-medium border-b border-slate-200 dark:border-slate-700">
+              <div className="shrink-0 max-h-[45%] overflow-y-auto">
+                <QuickAccess currentPath={currentPath} onNavigate={navigate_to} onDropMove={moveToPath} />
+              </div>
+              <div className="shrink-0 px-3 py-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-500 font-medium">
                 Folders
               </div>
-              <FileTree currentPath={currentPath} onNavigate={navigate_to} onFolderContextMenu={openContextMenu} onDropMove={moveToPath} />
+              <div className="flex-1 min-h-0">
+                <FileTree currentPath={currentPath} onNavigate={navigate_to} onFolderContextMenu={openContextMenu} onDropMove={moveToPath} />
+              </div>
             </aside>
           )}
 
@@ -512,6 +586,8 @@ export default function Admin() {
               onMoveInto={moveInto}
               onMoveSelected={() => setMoveOpen(true)}
               onBulkShare={() => setBulkShareOpen(true)}
+              onActivate={setActive}
+              activeName={active?.name ?? null}
               hrefFor={hrefFor}
               onOpen={openEntry}
               onPreview={entry => setModal({ type: 'preview', entry })}
@@ -526,6 +602,29 @@ export default function Admin() {
               onDelete={handleDelete}
             />
           </main>
+
+          {/* Right-hand details / preview / actions panel */}
+          {detailsOpen && (
+            <DetailsPanel
+              entry={active}
+              path={active ? (currentPath === '/' ? `/${active.name}` : `${currentPath}/${active.name}`) : null}
+              currentPath={currentPath}
+              itemCount={entries.length}
+              onClose={toggleDetails}
+              hrefFor={hrefFor}
+              onOpen={openEntry}
+              onPreview={entry => setModal({ type: 'preview', entry })}
+              onShare={entry => setModal({ type: 'share', entry })}
+              onRename={entry => { setPendingEntry(entry); setInputValue(entry.name); setShowInput('rename'); }}
+              onMove={entry => {
+                const from = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
+                setPendingEntry(entry);
+                setInputValue(from);
+                setShowInput('move');
+              }}
+              onDelete={handleDelete}
+            />
+          )}
         </div>
       )}
 
@@ -587,6 +686,9 @@ export default function Admin() {
             </button>
             <button onClick={() => { const sp = new URLSearchParams({ path: ctxMenu.path, tab: 'files' }); window.open(`/admin?${sp.toString()}`, '_blank', 'noopener'); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
               <ExternalLink size={15} /> Open in new tab
+            </button>
+            <button onClick={() => { togglePin(ctxMenu.path, ctxMenu.name); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+              <Star size={15} /> Pin to Quick Access
             </button>
             <button onClick={() => { navigate_to(ctxMenu.path); setModal({ type: 'upload' }); setCtxMenu(null); }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
               <Upload size={15} /> Upload here

@@ -6,7 +6,7 @@ import type { MouseEvent, DragEvent, ReactNode } from 'react';
 import {
   Folder, File as FileIcon, Music, Video, Image as ImageIcon, FileText, Archive,
   Trash2, Share2, Eye, Pencil, Move, Link2, ExternalLink, Download, FolderOpen,
-  ChevronUp, ChevronDown, Check, X,
+  ChevronUp, ChevronDown, Check, X, Star,
 } from 'lucide-react';
 import { FileEntry } from '../api/client';
 import { toast } from './Toast';
@@ -18,6 +18,7 @@ import {
 } from '../lib/fileMeta';
 import { ViewMode, VIEW_EDGE, showsThumbs } from '../lib/viewModes';
 import ViewModeSwitcher from './ViewModeSwitcher';
+import { isPinned, togglePin } from '../lib/quickAccess';
 
 type SortKey = 'name' | 'size' | 'modified';
 
@@ -72,14 +73,33 @@ export interface Props {
   onMoveInto?: (sourceName: string, destFolderName: string) => void;
   onMoveSelected?: () => void;
   onBulkShare?: () => void;
+
+  /** Fired when a row's body (not its name/checkbox/actions) is clicked — used
+   *  to drive the right-hand details panel. */
+  onActivate?: (entry: FileEntry) => void;
+  /** Name of the entry currently shown in the details panel, for highlighting. */
+  activeName?: string | null;
 }
 
 export default function FileList(props: Props) {
   const {
     entries, currentPath, mode, onModeChange, onOpen, onPreview, hrefFor, loading,
     selected, onSelect, onSelectAll, onShare, onRename, onMove, onDelete,
-    onMoveInto, onMoveSelected, onBulkShare,
+    onMoveInto, onMoveSelected, onBulkShare, onActivate, activeName,
   } = props;
+
+  // Clicking a row's body (icon, metadata, empty space) shows it in the details
+  // panel. Clicks on the name, checkbox and action buttons stopPropagation, so
+  // their own intent (open/preview, select, act) is never overridden by this.
+  const activateProps = onActivate
+    ? (entry: FileEntry) => ({ onClick: () => onActivate(entry) })
+    : () => ({});
+
+  function activeCls(entry: FileEntry): string {
+    return onActivate && activeName === entry.name && !sel.has(entry.name) && dragOverName !== entry.name
+      ? 'ring-1 ring-inset ring-blue-400/70 dark:ring-blue-500/60'
+      : '';
+  }
 
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortAsc, setSortAsc] = useState(true);
@@ -143,7 +163,15 @@ export default function FileList(props: Props) {
     if (onShare) {
       items.push({ icon: <Share2 size={15} />, label: isDir ? 'Share folder' : 'Share', onClick: () => onShare(entry) });
     }
-    if (onRename) items.push({ icon: <Pencil size={15} />, label: 'Rename', onClick: () => onRename(entry), separated: true });
+    if (isDir) {
+      const p = pathOf(entry);
+      const pinned = isPinned(p);
+      items.push({
+        icon: <Star size={15} />, label: pinned ? 'Unpin from Quick Access' : 'Pin to Quick Access',
+        onClick: () => togglePin(p, entry.name), separated: true,
+      });
+    }
+    if (onRename) items.push({ icon: <Pencil size={15} />, label: 'Rename', onClick: () => onRename(entry), separated: !isDir });
     if (onMove) items.push({ icon: <Move size={15} />, label: 'Move', onClick: () => onMove(entry) });
     if (onDelete) items.push({ icon: <Trash2 size={15} />, label: 'Delete', onClick: () => onDelete([entry]), danger: true, separated: true });
     return items;
@@ -429,9 +457,10 @@ export default function FileList(props: Props) {
       <div
         key={entry.name}
         {...dragProps(entry)}
+        {...activateProps(entry)}
         onDoubleClick={() => onOpen(entry)}
         className={`group grid ${DETAILS_GRID} items-center gap-x-3 px-3 py-1.5 rounded-lg
-          transition-colors ${stateClasses(entry)}`}
+          transition-colors ${stateClasses(entry)} ${activeCls(entry)}`}
       >
         {selectBox(entry)}
         <span className="text-xs text-slate-400 tabular-nums text-right">{idx + 1}</span>
@@ -457,9 +486,10 @@ export default function FileList(props: Props) {
       <div
         key={entry.name}
         {...dragProps(entry)}
+        {...activateProps(entry)}
         onDoubleClick={() => onOpen(entry)}
         className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg min-w-0
-          transition-colors ${stateClasses(entry)}`}
+          transition-colors ${stateClasses(entry)} ${activeCls(entry)}`}
       >
         {selectBox(entry)}
         <EntryIcon entry={entry} size={VIEW_EDGE.list} />
@@ -477,10 +507,11 @@ export default function FileList(props: Props) {
       <div
         key={entry.name}
         {...dragProps(entry)}
+        {...activateProps(entry)}
         onDoubleClick={() => onOpen(entry)}
         className={`group relative flex items-center gap-3 p-2.5 rounded-xl border border-slate-200
           hover:border-slate-300 hover:shadow-sm dark:border-slate-700 dark:hover:border-slate-600
-          transition-all ${cardSurface(entry)} ${stateClasses(entry)}`}
+          transition-all ${cardSurface(entry)} ${stateClasses(entry)} ${activeCls(entry)}`}
       >
         {selectBox(entry, `absolute top-2 left-2 z-10 ${sel.has(entry.name) ? '' : hoverActions}`)}
         {showsThumbs(mode) ? (
@@ -514,10 +545,11 @@ export default function FileList(props: Props) {
       <div
         key={entry.name}
         {...dragProps(entry)}
+        {...activateProps(entry)}
         onDoubleClick={() => onOpen(entry)}
         className={`group relative flex flex-col rounded-xl border border-slate-200 overflow-hidden
           hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:hover:border-slate-600
-          transition-all ${cardSurface(entry)} ${stateClasses(entry)}`}
+          transition-all ${cardSurface(entry)} ${stateClasses(entry)} ${activeCls(entry)}`}
       >
         {selectBox(entry, `absolute top-2 left-2 z-10 ${sel.has(entry.name) ? '' : hoverActions}`)}
         {/* NO backdrop-filter here. `backdrop-filter` (like `transform`) makes an
