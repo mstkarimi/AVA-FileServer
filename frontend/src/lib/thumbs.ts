@@ -37,6 +37,17 @@ const SIZE_CEILING = 512 * 1024;
 const CACHE_LIMIT = 60;
 
 /**
+ * Cap each cached thumbnail's PIXEL dimensions. The size ceiling above bounds
+ * the *file* bytes, but the browser holds the DECODED bitmap in GPU/CPU memory
+ * at the image's full resolution — a 400 KB JPEG can still be 4000×3000 = ~48 MB
+ * decoded. Sixty of those is well over a gigabyte of texture memory, which on a
+ * modest GPU triggers Chrome to evict layers and repaint whole regions WHITE
+ * (the "middle of the page goes blank" symptom). Downscaling each thumb once to
+ * this longest edge keeps the whole cache in the low tens of MB.
+ */
+const MAX_THUMB_PX = 320;
+
+/**
  * A single 429 trips the breaker. The cap is per-IP and shared by the whole
  * office, so one rejection means somebody is genuinely mid-download — asking
  * again would take slots from a real file transfer to draw decoration.
@@ -151,6 +162,46 @@ function thumbUrl(path: string): string {
 }
 
 /**
+ * Shrink a full-resolution image blob to at most MAX_THUMB_PX on its longest
+ * edge, so the browser never holds a giant decoded bitmap. Output keeps alpha
+ * (PNG) so transparent logos don't get a black box. Any failure (unsupported
+ * API, an SVG that createImageBitmap can't rasterise, a decode error) falls
+ * back to the original blob — the thumbnail still shows, just not shrunk.
+ */
+async function downscale(blob: Blob): Promise<Blob> {
+  try {
+    if (typeof createImageBitmap !== 'function') return blob;
+    const bmp = await createImageBitmap(blob);
+    const longest = Math.max(bmp.width, bmp.height);
+    if (longest <= MAX_THUMB_PX) { bmp.close?.(); return blob; }  // already small
+    const scale = MAX_THUMB_PX / longest;
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+
+    let out: Blob | null = null;
+    if (typeof OffscreenCanvas === 'function') {
+      const c = new OffscreenCanvas(w, h);
+      const ctx = c.getContext('2d');
+      if (!ctx) { bmp.close?.(); return blob; }
+      ctx.drawImage(bmp, 0, 0, w, h);
+      bmp.close?.();
+      out = await c.convertToBlob({ type: 'image/png' });
+    } else {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      if (!ctx) { bmp.close?.(); return blob; }
+      ctx.drawImage(bmp, 0, 0, w, h);
+      bmp.close?.();
+      out = await new Promise<Blob | null>(resolve => c.toBlob(resolve, 'image/png'));
+    }
+    return out || blob;
+  } catch {
+    return blob;
+  }
+}
+
+/**
  * Fetch one thumbnail, respecting the gate and the breaker.
  * Resolves to an object URL, or null when no thumbnail should be shown.
  * Passing an AbortSignal lets a tile cancel itself when scrolled away.
@@ -185,7 +236,12 @@ export async function loadThumb(path: string, signal: AbortSignal): Promise<stri
     if (signal.aborted) return null;
     if (!blob.type.startsWith('image/')) { failed.add(path); return null; }
 
-    const url = URL.createObjectURL(blob);
+    // Shrink the decoded pixels before we ever hand it to an <img>, so a folder
+    // of high-res photos can't balloon GPU texture memory into white-out territory.
+    const small = await downscale(blob);
+    if (signal.aborted) return null;
+
+    const url = URL.createObjectURL(small);
     remember(path, url);
     return url;
   } catch {
